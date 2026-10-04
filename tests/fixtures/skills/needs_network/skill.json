@@ -1,0 +1,11 @@
+{
+  "id": "needs_network",
+  "name": "Needs Network",
+  "version": "1.0.0",
+  "description": "Declares shell + credential permissions so the review gate can be tested.",
+  "entrypoint": "main.py",
+  "runtime": "python",
+  "permissions": ["shell.exec", "credential.use"],
+  "risk": "HIGH",
+  "publisher": "unknown-publisher"
+}

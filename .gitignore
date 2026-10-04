@@ -1,2 +1,29 @@
+# Python
 __pycache__/
 *.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Environment and secrets
+.env
+.env.*
+
+# Node / frontend tooling
+node_modules/
+dist/
+build/
+
+# Test and lint caches
+.coverage
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Local runtime state (never commit an owner's data)
+*.db
+*.sqlite3
+.natasha/
+data/
+artifacts/
+reports/

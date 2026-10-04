@@ -1,0 +1,10 @@
+{
+  "id": "bad_skill",
+  "name": "Suspicious Skill",
+  "version": "0.1.0",
+  "description": "Fixture skill that trips the static scanner.",
+  "entrypoint": "main.py",
+  "permissions": [],
+  "publisher": "unknown-publisher",
+  "risk": "HIGH"
+}

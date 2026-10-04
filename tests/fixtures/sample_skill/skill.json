@@ -1,0 +1,14 @@
+{
+  "id": "word_count",
+  "name": "Word Count",
+  "version": "1.0.0",
+  "description": "Count words, characters and lines in the supplied text.",
+  "entrypoint": "main.py",
+  "runtime": "python",
+  "permissions": [],
+  "dependencies": [],
+  "risk": "LOW",
+  "publisher": "natasha-labs",
+  "inputs": {"text": {"type": "string"}},
+  "outputs": {"words": {"type": "integer"}, "characters": {"type": "integer"}}
+}

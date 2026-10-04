@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark light" />
+  <title>Natasha</title>
+  <link rel="icon" href="/assets/logo.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="stylesheet" href="/assets/app.css" />
+</head>
+<body>
+  <a class="skip" href="#view">Skip to content</a>
+
+  <!-- Owner setup / unlock -->
+  <div id="gate" class="gate" hidden>
+    <div class="gate__card">
+      <div class="gate__brand">
+        <img src="/assets/logo.svg" alt="" width="40" height="40" />
+        <div>
+          <h1>Natasha</h1>
+          <p id="gate-sub" class="muted">Local-first personal agent</p>
+        </div>
+      </div>
+      <form id="gate-form" autocomplete="off">
+        <label for="gate-pass">Owner passphrase</label>
+        <input id="gate-pass" type="password" name="passphrase" minlength="8"
+               autocomplete="current-password" required />
+        <p id="gate-hint" class="muted small">
+          Your passphrase unlocks the local session. It never leaves this machine.
+        </p>
+        <button id="gate-submit" class="btn btn--primary" type="submit">Unlock</button>
+      </form>
+      <p id="gate-error" class="error" role="alert" hidden></p>
+    </div>
+  </div>
+
+  <div id="shell" class="shell" hidden>
+    <aside class="sidebar" aria-label="Sections">
+      <div class="sidebar__brand">
+        <img src="/assets/logo.svg" alt="" width="28" height="28" />
+        <span>Natasha</span>
+        <button id="collapse" class="icon-btn" title="Collapse sidebar" aria-label="Collapse sidebar">«</button>
+      </div>
+      <nav id="nav" class="nav"></nav>
+      <div class="sidebar__foot">
+        <div id="health-chip" class="chip chip--muted" title="Runtime health">checking…</div>
+        <button id="logout" class="btn btn--ghost small">Lock</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button id="menu" class="icon-btn only-narrow" aria-label="Open navigation">☰</button>
+        <div class="topbar__title">
+          <h2 id="view-title">Chat</h2>
+          <p id="view-sub" class="muted small"></p>
+        </div>
+        <div class="topbar__actions">
+          <button id="palette-open" class="btn btn--ghost small" title="Command palette (Ctrl/Cmd + K)">
+            ⌘K
+          </button>
+          <button id="theme" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">◐</button>
+        </div>
+      </header>
+      <section id="view" class="view" tabindex="-1"></section>
+    </main>
+  </div>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <div id="modal-root"></div>
+
+  <div id="palette" class="palette" hidden>
+    <input id="palette-input" type="text" placeholder="Jump to…  (sections, missions, memories, skills)" />
+    <ul id="palette-list" class="palette__list"></ul>
+  </div>
+
+  <script type="module" src="/assets/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "name": "Natasha - local-first personal agent",
+  "short_name": "Natasha",
+  "description": "Chat, voice, vision, computer use, missions, memory and skills for a local-first agent that asks before it acts.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b0f16",
+  "theme_color": "#0b0f16",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/assets/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    { "name": "Chat", "url": "/#/chat" },
+    { "name": "Approvals", "url": "/#/approvals" },
+    { "name": "Missions", "url": "/#/missions" },
+    { "name": "Settings", "url": "/#/settings" }
+  ]
+}

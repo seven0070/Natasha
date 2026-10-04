@@ -1,0 +1,313 @@
+#!/usr/bin/env python3
+"""Convert a JSON file into a Python module.
+
+Two output modes are supported:
+
+* ``literal`` (default) -- the data is emitted as native Python literals
+  (``None``/``True``/``False``, tuples-free, quoted keys), producing a
+  dependency-free, importable module::
+
+      DATA = {
+          "name": "Natasha",
+          "enabled": True,
+      }
+
+* ``json`` -- the data is embedded verbatim as a JSON string and decoded at
+  import time with :mod:`json`. Useful for very large or deeply nested
+  documents where a literal would be unwieldy::
+
+      import json
+
+      _JSON = '''...'''
+
+      DATA = json.loads(_JSON)
+
+Usage
+-----
+::
+
+    python json_to_py.py build.json                  # -> build.py (DATA = {...})
+    python json_to_py.py build.json -o config.py --var CONFIG
+    python json_to_py.py build.json --mode json
+    cat build.json | python json_to_py.py - --var BUILD
+
+The generated literal module is round-trip verified with
+:func:`ast.literal_eval` before it is written, so a successful run guarantees
+the Python file parses back to exactly the same data.
+"""
+
+from __future__ import annotations
+
+import argparse
+import ast
+import json
+import keyword
+import sys
+from pathlib import Path
+from typing import Any, Iterator
+
+INDENT = "    "
+
+
+# --------------------------------------------------------------------------- #
+# scalar formatting
+# --------------------------------------------------------------------------- #
+def format_key(key: str) -> str:
+    """Render a JSON object key as a Python string literal.
+
+    Python dictionary displays require quoted keys (``{"a": 1}``); a bare
+    ``{a: 1}`` would be a runtime name lookup, not a string key.
+    """
+    return repr(key)
+
+
+def format_scalar(value: Any) -> str:
+    """Render a JSON scalar as a Python literal."""
+    if value is None:
+        return "None"
+    if value is True:
+        return "True"
+    if value is False:
+        return "False"
+    if isinstance(value, str):
+        return repr(value)
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if value != value:  # NaN
+            return "float('nan')"
+        if value == float("inf"):
+            return "float('inf')"
+        if value == float("-inf"):
+            return "float('-inf')"
+        return repr(value)
+    raise TypeError(f"unsupported value of type {type(value).__name__!r}")
+
+
+# --------------------------------------------------------------------------- #
+# rendering
+# --------------------------------------------------------------------------- #
+def _entries(value: Any) -> Iterator[tuple[Any, Any]]:
+    """Yield ``(key, item)`` pairs for dicts and ``(None, item)`` for lists."""
+    if isinstance(value, dict):
+        yield from value.items()
+    else:
+        for item in value:
+            yield None, item
+
+
+def _flat(value: Any, budget: int) -> str | None:
+    """Single-line representation of *value* if it fits in *budget* chars."""
+    if not isinstance(value, (dict, list)):
+        return None if len(format_scalar(value)) > budget else format_scalar(value)
+    if not value:
+        return "{}" if isinstance(value, dict) else "[]"
+
+    open_, close = ("{", "}") if isinstance(value, dict) else ("[", "]")
+    parts: list[str] = []
+    used = len(open_) + len(close)
+    for key, item in _entries(value):
+        piece = _flat(item, budget)
+        if piece is None:
+            return None
+        if key is not None:
+            piece = f"{format_key(key)}: {piece}"
+        used += len(piece) + 2  # ", "
+        if used > budget:
+            return None
+        parts.append(piece)
+    return f"{open_}{', '.join(parts)}{close}"
+
+
+def render(value: Any, level: int = 0, width: int = 88) -> str:
+    """Render *value* as nicely wrapped Python source."""
+    if not isinstance(value, (dict, list)):
+        return format_scalar(value)
+
+    if not value:
+        return "{}" if isinstance(value, dict) else "[]"
+
+    pad = INDENT * level
+    inner = INDENT * (level + 1)
+
+    flat = _flat(value, max(width - len(pad), 24))
+    if flat is not None and len(pad) + len(flat) <= width:
+        return flat
+
+    lines: list[str] = []
+    for key, item in _entries(value):
+        prefix = f"{format_key(key)}: " if key is not None else ""
+        body = render(item, level + 1, width)
+        lines.append(f"{inner}{prefix}{body}")
+    # Separators are inserted between entries, so a trailing comma is only
+    # needed when the closing bracket would otherwise sit on the same line.
+    block = ",\n".join(lines)
+    open_, close = ("{", "}") if isinstance(value, dict) else ("[", "]")
+    return f"{open_}\n{block},\n{pad}{close}"
+
+
+def to_literal_source(data: Any, variable: str, source: str, width: int) -> str:
+    """Build the full text of a literal-mode Python module."""
+    body = render(data, level=0, width=width)
+    header = (
+        f'"""Auto-generated by json_to_py.py from {source} -- do not edit by hand."""\n'
+        "\n"
+        f"{variable} = {body}\n"
+    )
+    return header
+
+
+def _embed_text(text: str) -> str:
+    """Return Python source for a string literal containing *text* verbatim.
+
+    Prefers a raw triple-quoted block so the JSON stays readable, and falls
+    back to an escaped literal when the text would break the delimiters or end
+    on a dangling backslash.
+    """
+    # The newlines around the body keep the delimiters unambiguous (a raw
+    # string may not end in a backslash and must not contain its own
+    # delimiter); surrounding whitespace is insignificant to json.loads.
+    if not text.endswith("\\"):
+        for quote in ("'''", '"""'):
+            if quote not in text:
+                return f"r{quote}\n{text}\n{quote}"
+    # json.dumps output only uses \\uXXXX, \\", \\\\, \\n, \\r, \\t, \\b, \\f --
+    # all of which are valid Python escapes, so this is always safe.
+    return json.dumps(text, ensure_ascii=True)
+
+
+def to_json_source(data: Any, variable: str, source: str) -> str:
+    """Build the full text of a json-mode Python module."""
+    text = json.dumps(data, indent=2, ensure_ascii=False)
+    header = (
+        f'"""Auto-generated by json_to_py.py from {source}."""\n'
+        "\n"
+        "import json\n"
+        "\n"
+        f"_JSON = {_embed_text(text)}\n"
+        "\n"
+        f"{variable} = json.loads(_JSON)\n"
+    )
+    return header
+
+
+# --------------------------------------------------------------------------- #
+# cli
+# --------------------------------------------------------------------------- #
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Convert a JSON file into an importable Python module.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "source",
+        help="path to the input .json file, or '-' to read JSON from stdin",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        help="path to the output .py file (default: input name with .py)",
+    )
+    parser.add_argument(
+        "--var",
+        default="DATA",
+        help="name of the generated module-level variable",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("literal", "json"),
+        default="literal",
+        help="emit native Python literals, or embed the JSON text",
+    )
+    parser.add_argument(
+        "--width",
+        type=int,
+        default=88,
+        help="soft wrap width for literal mode",
+    )
+    parser.add_argument(
+        "-f",
+        "--force",
+        action="store_true",
+        help="overwrite the output file if it already exists",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+
+    if not args.var.isidentifier() or keyword.iskeyword(args.var):
+        print(f"error: --var {args.var!r} is not a valid Python name", file=sys.stderr)
+        return 2
+
+    if args.source == "-":
+        raw = sys.stdin.read()
+        label = "<stdin>"
+        default_out: Path | None = None
+    else:
+        path = Path(args.source)
+        if not path.is_file():
+            print(f"error: no such file: {path}", file=sys.stderr)
+            return 2
+        raw = path.read_text(encoding="utf-8")
+        label = path.name
+        default_out = path.with_suffix(".py")
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        print(f"error: {label} is not valid JSON: {exc}", file=sys.stderr)
+        return 1
+
+    if args.mode == "literal":
+        text = to_literal_source(data, args.var, label, args.width)
+    else:
+        text = to_json_source(data, args.var, label)
+
+    # Guarantee the generated module imports back to the original data.
+    try:
+        namespace: dict[str, Any] = {}
+        exec(compile(text, "<generated>", "exec"), namespace)
+        if namespace[args.var] != data:
+            raise ValueError("generated value does not match the input data")
+    except Exception as exc:  # pragma: no cover - defensive
+        print(f"error: round-trip verification failed: {exc}", file=sys.stderr)
+        return 1
+
+    out = Path(args.output) if args.output else default_out
+    if out is None:
+        sys.stdout.write(text)
+        return 0
+
+    if out.exists() and not args.force:
+        print(f"error: {out} already exists (use --force to overwrite)", file=sys.stderr)
+        return 2
+
+    out.write_text(text, encoding="utf-8")
+    counts = {
+        "objects": sum(1 for _ in _walk(data, dict)),
+        "arrays": sum(1 for _ in _walk(data, list)),
+        "leaves": sum(1 for _ in _walk(data, (str, int, float, bool, type(None)))),
+    }
+    print(
+        f"wrote {out} ({out.stat().st_size:,} bytes; "
+        f"{counts['objects']} objects, {counts['arrays']} arrays, {counts['leaves']} leaves)"
+    )
+    return 0
+
+
+def _walk(value: Any, kinds: Any) -> Iterator[Any]:
+    """Depth-first walk yielding every value whose type is in *kinds*."""
+    if isinstance(value, kinds):
+        yield value
+    if isinstance(value, dict):
+        for item in value.values():
+            yield from _walk(item, kinds)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _walk(item, kinds)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

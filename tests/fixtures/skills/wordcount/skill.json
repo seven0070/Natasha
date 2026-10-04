@@ -1,0 +1,14 @@
+{
+  "id": "wordcount",
+  "name": "Word Count",
+  "version": "1.0.0",
+  "description": "Counts words and characters in a text payload. Pure computation, no permissions.",
+  "entrypoint": "main.py",
+  "runtime": "python",
+  "permissions": [],
+  "dependencies": [],
+  "risk": "LOW",
+  "publisher": "natasha-labs",
+  "inputs": {"type": "object", "properties": {"text": {"type": "string"}}},
+  "outputs": {"type": "object", "properties": {"words": {"type": "integer"}, "characters": {"type": "integer"}}}
+}
