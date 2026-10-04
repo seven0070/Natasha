@@ -6,11 +6,17 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from ...memory.models import MemoryKind
+from ...core import ValidationError
+
+from ...memory.models import MemoryKind, parse_kind
 from ..deps import audit, get_runtime, handle, require_owner
 from ..models import CorrectMemoryBody, MemoryBody
 
 router = APIRouter(prefix="/memory", tags=["memory"])
+
+# Starlette renamed its 422 constant (UNPROCESSABLE_ENTITY -> UNPROCESSABLE_CONTENT). The status
+# code itself is stable, so name the value once instead of reading a deprecated attribute.
+UNPROCESSABLE = 422
 
 
 def _store(request: Request) -> Any:
@@ -24,7 +30,10 @@ def _store(request: Request) -> Any:
 async def list_memories(request: Request, kind: str = "", limit: int = 100, include_superseded: bool = False,
                         actor: str = Depends(require_owner)) -> dict[str, Any]:
     store = _store(request)
-    parsed = MemoryKind(kind) if kind else ""
+    try:
+        parsed: MemoryKind | str = parse_kind(kind) if kind else ""
+    except ValidationError as exc:
+        raise HTTPException(UNPROCESSABLE, str(exc)) from exc
     records = store.list(kind=parsed, limit=min(limit, 1000), include_superseded=include_superseded)
     return {"memories": [record.to_dict() for record in records]}
 
@@ -77,12 +86,9 @@ async def recall(request: Request, query: str, limit: int = 10, kinds: str = "",
                  actor: str = Depends(require_owner)) -> dict[str, Any]:
     store = _store(request)
     try:
-        parsed = [MemoryKind(item.strip().lower()) for item in kinds.split(",") if item.strip()] \
-            if kinds else None
-    except ValueError as exc:
-        known = ", ".join(kind.value for kind in MemoryKind)
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            f"unknown memory kind in {kinds!r}; known kinds: {known}") from exc
+        parsed = [parse_kind(item) for item in kinds.split(",") if item.strip()] if kinds else None
+    except ValidationError as exc:
+        raise HTTPException(UNPROCESSABLE, str(exc)) from exc
     scored = store.recall(query, kinds=parsed, limit=min(limit, 100), actor=actor)
     return {"query": query, "hits": [item.to_dict() for item in scored]}
 

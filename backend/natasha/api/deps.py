@@ -78,7 +78,9 @@ def handle(exc: Exception) -> HTTPException:
     if isinstance(exc, ConflictError):
         return HTTPException(status.HTTP_409_CONFLICT, str(exc))
     if isinstance(exc, ValidationError):
-        return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+        # 422 (Starlette renamed the constant UNPROCESSABLE_ENTITY -> UNPROCESSABLE_CONTENT; the
+        # number is stable and reading the old attribute now emits a deprecation warning).
+        return HTTPException(422, str(exc))
     if isinstance(exc, NatashaError):
         return HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
     return HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"{type(exc).__name__}: {exc}")

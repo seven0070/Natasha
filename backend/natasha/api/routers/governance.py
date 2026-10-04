@@ -79,7 +79,7 @@ async def propose(body: UpgradeBody, request: Request, actor: str = Depends(requ
     patch = body.changes[0].get("patch", "") if body.changes else ""
     target_files = body.changes[0].get("target_files", []) if body.changes else []
     if not patch:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "a proposal needs a patch")
+        raise HTTPException(422, "a proposal needs a patch")
     try:
         proposal = governor.propose(body.summary, rationale=body.summary, patch=patch,
                                     target_files=target_files, actor=actor,

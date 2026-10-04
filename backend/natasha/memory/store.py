@@ -8,14 +8,14 @@ import threading
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-from ..core import ConflictError, NotFoundError, ValidationError, get_paths
+from ..core import ConflictError, NotFoundError, get_paths
 from ..core.clock import iso, parse_iso
 from ..core.risk import RiskLevel
 from ..events import EventKind, EventLog, get_event_log
 from ..events.sanitizer import get_sanitizer
 from ..security.policy import Capability, PolicyEngine, PolicyRequest
 from .embeddings import Embedder, cosine, get_embedder
-from .models import MemoryKind, MemoryRecord, Provenance, Retention
+from .models import MemoryKind, MemoryRecord, Provenance, Retention, parse_kind
 from .retrieval import HybridRetriever, RetrievalQuery, ScoredMemory
 
 SCHEMA = """
@@ -83,20 +83,6 @@ class MemoryStore:
             self._conn.executescript(SCHEMA)
 
     # ------------------------------------------------------------------ write
-    @staticmethod
-    def _parse_kind(kind: MemoryKind | str) -> MemoryKind:
-        """Parse a memory kind, reporting an unknown value as invalid input rather than a crash.
-
-        ``MemoryKind("bad")`` raises ValueError, which the API layer would surface as a 500. An
-        unknown kind is a client error, so it is converted here, where the value is understood.
-        """
-        if isinstance(kind, MemoryKind):
-            return kind
-        try:
-            return MemoryKind(str(kind).strip().lower())
-        except ValueError as exc:
-            known = ", ".join(item.value for item in MemoryKind)
-            raise ValidationError(f"unknown memory kind {kind!r}; known kinds: {known}") from exc
 
     def add(
         self,
@@ -116,7 +102,7 @@ class MemoryStore:
         metadata: dict[str, Any] | None = None,
     ) -> MemoryRecord:
         """Store a memory. Refuses to write without provenance or with an empty body."""
-        parsed_kind = self._parse_kind(kind)
+        parsed_kind = parse_kind(kind)
         retention_value = retention if isinstance(retention, Retention) else Retention(str(retention))
         text = (content or "").strip()
         if not text:
@@ -282,7 +268,7 @@ class MemoryStore:
                include_superseded: bool = False, record_access: bool = True) -> list[ScoredMemory]:
         """Hybrid retrieval: semantic + keyword + entity + temporal + recency + importance + task."""
         self._check(Capability.MEMORY_READ, actor, query[:120])
-        parsed_kinds = [self._parse_kind(kind) for kind in (kinds or [])]
+        parsed_kinds = [parse_kind(kind) for kind in (kinds or [])]
         where = ["1=1"]
         params: list[Any] = []
         if parsed_kinds:

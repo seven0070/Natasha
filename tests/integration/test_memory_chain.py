@@ -194,6 +194,12 @@ def test_an_unknown_memory_kind_is_a_client_error_not_a_server_error(owner):
     assert recalled.status_code == 422, recalled.text
     assert "known kinds" in recalled.json()["detail"]
 
+    # The listing endpoint parses the same query parameter, so it must answer the same way.
+    listed = owner.get("/api/memory?kind=not-a-kind")
+    assert listed.status_code == 422, listed.text
+    assert "known kinds" in listed.json()["detail"]
+    assert owner.get("/api/memory?kind=semantic").status_code == 200
+
     # The valid path still works, so the fix did not break writing memories.
     ok = owner.post("/api/memory", json={"kind": "semantic", "content": "validation probe"})
     assert ok.status_code in (200, 201), ok.text

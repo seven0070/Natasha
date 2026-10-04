@@ -62,7 +62,7 @@ def _decode_data_url(value: str) -> tuple[bytes, str]:
     try:
         return base64.b64decode(payload, validate=False), suffix
     except (binascii.Error, ValueError) as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"invalid base64 image: {exc}") from exc
+        raise HTTPException(422, f"invalid base64 image: {exc}") from exc
 
 
 def _analyse(request: Request, source: str | Path | bytes, *, prompt: str, actor: str) -> dict[str, Any]:
@@ -134,7 +134,7 @@ async def analyse(body: VisionAnalyseBody, request: Request,
         if not path.is_file():
             raise HTTPException(status.HTTP_404_NOT_FOUND, f"image not found: {path}")
     else:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "provide either path or data_url")
+        raise HTTPException(422, "provide either path or data_url")
     try:
         return _analyse(request, path, prompt=body.prompt, actor=actor)
     except HTTPException:
@@ -167,7 +167,7 @@ async def ocr(body: VisionOcrBody, request: Request, actor: str = Depends(requir
         source = "inline"
         text = engine._ocr(data)  # noqa: SLF001
     else:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "provide either path or data_url")
+        raise HTTPException(422, "provide either path or data_url")
     if not text:
         return {"ok": False, "source": source, "text": "", "error":
                 "no text extracted: install pytesseract + tesseract, or pass a document type "
@@ -188,7 +188,7 @@ async def upload(request: Request, file: UploadFile = File(...), prompt: str = "
     """Upload an image and analyse it in one step (what the UI uses)."""
     data = await file.read()
     if not data:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "empty upload")
+        raise HTTPException(422, "empty upload")
     if len(data) > MAX_IMAGE_BYTES:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "image is too large")
     suffix = Path(file.filename or "image.png").suffix or ".png"

@@ -155,7 +155,7 @@ async def turn_audio(request: Request, file: UploadFile = File(...), language: s
     loop = _loop(request)
     data = await file.read()
     if not data:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "empty audio upload")
+        raise HTTPException(422, "empty audio upload")
     if len(data) > 100 * 1024 * 1024:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "audio file is too large")
     result = loop.turn(audio=data, language=language, speak=speak,

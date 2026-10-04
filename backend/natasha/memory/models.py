@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..core import new_id
+from ..core import ValidationError, new_id
 from ..core.clock import iso
 
 
@@ -35,6 +35,21 @@ class Retention(str, enum.Enum):
     SESSION = "session"
     LONG_TERM = "long_term"
     PERMANENT = "permanent"
+
+
+def parse_kind(kind: MemoryKind | str) -> MemoryKind:
+    """Parse a caller-supplied memory kind, reporting an unknown value as invalid input.
+
+    ``MemoryKind("bad")`` raises a bare ``ValueError``, which the API layer would surface as a 500.
+    An unknown kind is a client error, so it is converted here, next to the enum it validates.
+    """
+    if isinstance(kind, MemoryKind):
+        return kind
+    try:
+        return MemoryKind(str(kind).strip().lower())
+    except ValueError as exc:
+        known = ", ".join(item.value for item in MemoryKind)
+        raise ValidationError(f"unknown memory kind {kind!r}; known kinds: {known}") from exc
 
 
 @dataclass
