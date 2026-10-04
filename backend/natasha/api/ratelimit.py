@@ -53,6 +53,7 @@ class RateLimiter:
         "vision": (30.0, 6),
         "mcp": (30.0, 6),
         "skills": (30.0, 6),
+        "tools": (60.0, 20),
         "login": (10.0, 5),
         "write": (120.0, 30),
         "default": (240.0, 60),

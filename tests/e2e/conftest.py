@@ -82,7 +82,7 @@ def live_server(tmp_path):
     home.mkdir(parents=True, exist_ok=True)
     port = _free_port()
     process = subprocess.Popen(
-        [sys.executable, "-m", "natasha.cli.main", "serve", "--host", "127.0.0.1",
+        [sys.executable, "-m", "natasha.cli", "serve", "--host", "127.0.0.1",
          "--port", str(port)],
         cwd=str(REPO_ROOT), env={"PATH": "/usr/bin:/bin:/usr/local/bin",
                                  "PYTHONPATH": str(REPO_ROOT / "backend"),

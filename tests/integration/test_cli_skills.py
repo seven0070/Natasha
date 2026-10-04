@@ -29,7 +29,7 @@ def _cli(home: Path, *args: str) -> subprocess.CompletedProcess[str]:
     environment["NATASHA_HOME"] = str(home)
     environment["PYTHONPATH"] = str(BACKEND) + os.pathsep + environment.get("PYTHONPATH", "")
     return subprocess.run(
-        [sys.executable, "-m", "natasha.cli.main", *args],
+        [sys.executable, "-m", "natasha.cli", *args],
         capture_output=True, text=True, env=environment, cwd=str(REPO_ROOT), timeout=180,
     )
 

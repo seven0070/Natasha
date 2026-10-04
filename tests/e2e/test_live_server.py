@@ -144,7 +144,7 @@ def test_the_whole_owner_flow_works_over_http_and_survives_a_restart(live_server
     from tests.e2e.conftest import REPO_ROOT
 
     restarted = subprocess.Popen(
-        [sys.executable, "-m", "natasha.cli.main", "serve", "--host", "127.0.0.1",
+        [sys.executable, "-m", "natasha.cli", "serve", "--host", "127.0.0.1",
          "--port", str(live_server["port"])],
         cwd=str(REPO_ROOT),
         env={"PATH": "/usr/bin:/bin:/usr/local/bin", "PYTHONPATH": str(REPO_ROOT / "backend"),

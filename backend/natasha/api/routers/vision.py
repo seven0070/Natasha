@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 
 from ...core import run_coroutine_sync
 from ...security.injection import ContentTrust, ExternalContent, get_injection_guard
-from ..deps import audit, get_runtime, handle, require_owner
+from ..deps import audit, get_runtime, handle, rate_limit, require_owner
 from ..models import CameraBody, VideoBody, VisionAnalyseBody, VisionOcrBody
 
 router = APIRouter(prefix="/vision", tags=["vision"])
@@ -113,7 +113,8 @@ def _accessibility(request: Request) -> dict[str, Any]:
 
 @router.post("/analyse")
 async def analyse(body: VisionAnalyseBody, request: Request,
-                  actor: str = Depends(require_owner)) -> dict[str, Any]:
+                  actor: str = Depends(require_owner),
+                  limited: None = Depends(rate_limit("vision"))) -> dict[str, Any]:
     """Analyse an image already on disk (inside the allowed roots)."""
     runtime = get_runtime(request)
     if body.data_url:
@@ -143,7 +144,8 @@ async def analyse(body: VisionAnalyseBody, request: Request,
 
 
 @router.post("/ocr")
-async def ocr(body: VisionOcrBody, request: Request, actor: str = Depends(require_owner)) -> dict[str, Any]:
+async def ocr(body: VisionOcrBody, request: Request, actor: str = Depends(require_owner),
+              limited: None = Depends(rate_limit("vision"))) -> dict[str, Any]:
     """Extract text from an image, screenshot or document without a vision model."""
     engine = _engine(request)
     runtime = get_runtime(request)
@@ -181,7 +183,8 @@ async def ocr(body: VisionOcrBody, request: Request, actor: str = Depends(requir
 
 @router.post("/upload")
 async def upload(request: Request, file: UploadFile = File(...), prompt: str = "",
-                 actor: str = Depends(require_owner)) -> dict[str, Any]:
+                 actor: str = Depends(require_owner),
+                 limited: None = Depends(rate_limit("vision"))) -> dict[str, Any]:
     """Upload an image and analyse it in one step (what the UI uses)."""
     data = await file.read()
     if not data:
@@ -200,7 +203,8 @@ async def upload(request: Request, file: UploadFile = File(...), prompt: str = "
 
 @router.post("/screen")
 async def screen(body: VisionAnalyseBody, request: Request,
-                 actor: str = Depends(require_owner)) -> dict[str, Any]:
+                 actor: str = Depends(require_owner),
+                 limited: None = Depends(rate_limit("vision"))) -> dict[str, Any]:
     """Screenshot the desktop (through the computer-use controller, so policy still applies) and look at it."""
     runtime = get_runtime(request)
     if runtime.computer is None:
@@ -219,7 +223,8 @@ async def screen(body: VisionAnalyseBody, request: Request,
 
 @router.post("/camera")
 async def camera(body: CameraBody, request: Request,
-                 actor: str = Depends(require_owner)) -> dict[str, Any]:
+                 actor: str = Depends(require_owner),
+                 limited: None = Depends(rate_limit("vision"))) -> dict[str, Any]:
     """Grab one frame from a webcam and analyse it. Requires OpenCV and a camera."""
     try:
         import cv2  # type: ignore
@@ -245,7 +250,8 @@ async def camera(body: CameraBody, request: Request,
 
 @router.post("/video")
 async def video(body: VideoBody, request: Request,
-                actor: str = Depends(require_owner)) -> dict[str, Any]:
+                actor: str = Depends(require_owner),
+                limited: None = Depends(rate_limit("vision"))) -> dict[str, Any]:
     """Sample frames from a video with ffmpeg and analyse each one."""
     import shutil
     import subprocess
@@ -288,7 +294,8 @@ async def accessibility(request: Request, actor: str = Depends(require_owner)) -
 
 @router.post("/ui")
 async def ui_understanding(body: VisionAnalyseBody, request: Request,
-                           actor: str = Depends(require_owner)) -> dict[str, Any]:
+                           actor: str = Depends(require_owner),
+                           limited: None = Depends(rate_limit("vision"))) -> dict[str, Any]:
     """Interpret a UI: combine the screenshot with the accessibility tree into one untrusted block."""
     runtime = get_runtime(request)
     tree = _accessibility(request)
@@ -312,7 +319,8 @@ async def ui_understanding(body: VisionAnalyseBody, request: Request,
 
 @router.post("/documents")
 async def documents(body: VisionOcrBody, request: Request,
-                    actor: str = Depends(require_owner)) -> dict[str, Any]:
+                    actor: str = Depends(require_owner),
+                    limited: None = Depends(rate_limit("vision"))) -> dict[str, Any]:
     """Read a document (pdf/docx/xlsx/pptx/csv/image/zip/text) as untrusted content."""
     from ...perception import get_document_reader
 

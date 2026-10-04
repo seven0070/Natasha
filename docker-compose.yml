@@ -1,0 +1,95 @@
+# Natasha — docker compose
+#
+#   cp .env.example .env          # optional: edit the bind address / ports
+#   docker compose up -d          # start the agent (API + console) on :8000
+#   docker compose logs -f natasha
+#   docker compose exec natasha natasha auth setup     # set the owner passphrase (first run)
+#
+# Optional profiles:
+#   docker compose --profile local-models up -d    # add Ollama for local models
+#   docker compose --profile postgres up -d        # add PostgreSQL and point the agent at it
+#
+# Named volumes, not bind mounts: the vault ($NATASHA_HOME/vault) is encrypted at rest and its key file
+# must not land in a source tree. Back it up with `natasha backup`.
+
+services:
+  natasha:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: natasha:local
+    container_name: natasha
+    restart: unless-stopped
+    ports:
+      - "${NATASHA_BIND_ADDR:-127.0.0.1}:${NATASHA_PORT:-8000}:8000"
+    environment:
+      NATASHA_HOME: /data
+      NATASHA_HOST: 0.0.0.0
+      NATASHA_CONFIG: /app/config/natasha.toml
+      NATASHA_LOG_LEVEL: "${NATASHA_LOG_LEVEL:-INFO}"
+      NATASHA_DEPLOYMENT: server
+    volumes:
+      - natasha-data:/data
+    # The container runs as a non-root user and needs no Linux capabilities beyond the defaults.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import json,urllib.request;d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/api/health',timeout=4));raise SystemExit(0 if d.get('runtime',{}).get('ok') else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 25s
+      retries: 3
+    # Resource ceilings: the agent should be a well-behaved neighbour, not the reason a host dies.
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+
+  # ---------------------------------------------------------------- local models (profile)
+  # Ollama runs as its own service. The agent discovers it through the provider settings, so nothing
+  # in the agent's code knows about docker. Point the provider at the service by name:
+  #   NATASHA_PROVIDERS__OLLAMA__BASE_URL=http://ollama:11434
+  #   natasha providers add ollama && natasha providers enable ollama
+  # (or use the Providers screen in the console).
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["local-models"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # ---------------------------------------------------------------- postgres (profile)
+  # The SQLite default needs no service. This profile runs PostgreSQL for the *migration* path
+  # (migrations/postgres + the postgres extra); the runtime stores are SQLite-only today, which
+  # docs/deployment.md states plainly rather than implying a switch that does not exist.
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["postgres"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-natasha}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}"
+      POSTGRES_DB: "${POSTGRES_DB:-natasha}"
+    volumes:
+      - natasha-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-natasha}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  natasha-data:
+  ollama-models:
+  natasha-postgres:

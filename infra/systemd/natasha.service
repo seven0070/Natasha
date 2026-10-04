@@ -1,0 +1,57 @@
+# Natasha as a system service (headless server deployment).
+#
+#   sudo cp infra/systemd/natasha.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now natasha
+#   sudo journalctl -u natasha -f
+#
+# Assumes an installation in /opt/natasha (git checkout or unpacked release) with a virtualenv in
+# /opt/natasha/.venv, and a data directory at /var/lib/natasha owned by the natasha user:
+#
+#   sudo useradd --system --home /var/lib/natasha --create-home natasha
+#   sudo python3 -m venv /opt/natasha/.venv
+#   sudo /opt/natasha/.venv/bin/pip install "/opt/natasha[api,crypto,docs]"
+#   sudo -u natasha /opt/natasha/.venv/bin/natasha migrate up
+#   sudo -u natasha /opt/natasha/.venv/bin/natasha auth setup
+
+[Unit]
+Description=Natasha agent (API + web console)
+Documentation=file:/opt/natasha/docs/deployment.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=natasha
+Group=natasha
+WorkingDirectory=/opt/natasha
+Environment=NATASHA_HOME=/var/lib/natasha
+Environment=NATASHA_CONFIG=/opt/natasha/config/natasha.toml
+Environment=NATASHA_HOST=127.0.0.1
+Environment=NATASHA_PORT=8000
+ExecStart=/opt/natasha/.venv/bin/natasha serve --host ${NATASHA_HOST} --port ${NATASHA_PORT}
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+# Hardening. The agent needs to write only its own home; everything else is read-only.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/natasha
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+SystemCallArchitectures=native
+# Computer-use (screen capture, input injection) only works with an X11/Wayland session; this unit is
+# the headless profile and deliberately does not grant access to a display.
+
+[Install]
+WantedBy=multi-user.target

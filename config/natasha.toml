@@ -1,0 +1,69 @@
+# Natasha — repository-level configuration
+#
+# Precedence (lowest to highest):
+#   built-in defaults  ->  this file  ->  $NATASHA_HOME/config/natasha.toml
+#   ->  NATASHA_* environment variables  ->  explicit overrides in code
+#
+# This file is read from the repository root (the container image ships it at /app/config).
+# It only carries *deployment shape* knobs: never absolute paths and never credentials.
+# Machine-specific paths (data_dir) belong in $NATASHA_HOME/config/natasha.toml, which the
+# runtime writes for you; provider keys belong in the encrypted vault, never in a config file
+# and never in the environment (natasha.core.config deliberately ignores NATASHA_*API_KEY*).
+#
+# Nested keys use `__` in the environment: NATASHA_LIMITS__ENABLED=false,
+# NATASHA_EXECUTIVE__MAX_STEPS=80, NATASHA_SECURITY__DEFAULT_EFFECT=allow.
+
+profile = "local-first"
+deployment = "server"          # desktop | headless | server | lan
+host = "127.0.0.1"             # safe default; the container image sets NATASHA_HOST=0.0.0.0
+port = 8000
+auth_required = true           # never disable this on a non-loopback bind
+session_ttl_minutes = 720
+
+[security]
+# Deny by default: a capability that is not explicitly allowed is refused.
+default_effect = "deny"
+require_approval_for = [
+  "fs.write_outside_workspace",
+  "shell.exec",
+  "computer.control",
+  "credential.use",
+  "code.exec",
+]
+max_tool_output_bytes = 262144
+
+[brain]
+# Local models are preferred when they are available; cloud providers are a fallback, not the default.
+prefer_local = true
+stream = true
+fallback_depth = 3
+health_ttl_seconds = 90.0
+
+[executive]
+max_steps = 40
+max_repairs = 3
+step_timeout_seconds = 300.0
+# Never let the model's own claim count as proof, and never let a turn report success unverified.
+require_verification = true
+allow_unverified_success = false
+
+[memory]
+db_backend = "sqlite"          # read by the migration runner; the runtime stores are SQLite-only
+                               # today (Postgres schema + migrations exist: see docs/deployment.md)
+embed_dim = 384
+retrieval_k = 12
+
+[limits]
+enabled = true
+multiplier = 1.0
+
+[features]
+voice = true
+vision = true
+computer = true
+mcp = true
+skills = true
+marketplace = true
+creation = true
+evolution = true
+affect = true

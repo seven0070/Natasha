@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from ...tools.base import ToolContext
-from ..deps import audit, get_runtime, handle, require_owner
+from ..deps import audit, get_runtime, handle, rate_limit, require_owner
 from ..models import ToolCallBody
 
 router = APIRouter(prefix="/tools", tags=["tools"])
@@ -36,7 +36,8 @@ async def describe_tool(name: str, request: Request, actor: str = Depends(requir
 
 @router.post("/{name}")
 async def run_tool(name: str, body: ToolCallBody, request: Request,
-                   actor: str = Depends(require_owner)) -> dict[str, Any]:
+                   actor: str = Depends(require_owner),
+                   limited: None = Depends(rate_limit("tools"))) -> dict[str, Any]:
     """Run a tool as the owner. The policy engine, not this route, decides whether it may run."""
     runtime = get_runtime(request)
     registry = _registry(request)

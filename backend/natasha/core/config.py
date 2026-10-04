@@ -290,6 +290,34 @@ def _replace_all(text: str, table: dict[str, str]) -> str:
     return text
 
 
+def _config_candidates(paths: NatashaPaths, env: dict[str, str] | None = None) -> list[Path]:
+    """The configuration files to layer, lowest precedence first.
+
+    Three sources, in order:
+
+    * the *checkout's* ``config/natasha.toml`` - found by walking up from this module to the
+      directory holding ``pyproject.toml``, so a source checkout is configured by the repository;
+    * ``$NATASHA_CONFIG`` - an explicit path, used by the container image (mounted at
+      ``/app/config/natasha.toml``) and by operators who keep the file elsewhere;
+    * ``$NATASHA_HOME/config/natasha.toml`` - the machine's own settings, written by
+      :meth:`Settings.save`, and the only one that may contain machine-specific paths.
+
+    A missing file is not an error: every layer is optional and the built-in defaults stand.
+    """
+    environment = env if env is not None else dict(os.environ)
+    found: list[Path] = []
+    for parent in Path(__file__).resolve().parents[:4]:
+        candidate = parent / "config" / "natasha.toml"
+        if (parent / "pyproject.toml").is_file() and candidate.is_file():
+            found.append(candidate)
+            break
+    explicit = environment.get("NATASHA_CONFIG", "").strip()
+    if explicit:
+        found.append(Path(explicit).expanduser())
+    found.append(paths.config / "natasha.toml")
+    return found
+
+
 def load_settings(
     home: str | os.PathLike[str] | None = None,
     *,
@@ -301,7 +329,7 @@ def load_settings(
     raw: dict[str, Any] = {
         "providers": {name: asdict(cfg) for name, cfg in _default_provider_matrix().items()},
     }
-    for candidate in (Path(__file__).resolve().parents[2] / "config" / "natasha.toml", paths.config / "natasha.toml"):
+    for candidate in _config_candidates(paths, env):
         if candidate.is_file():
             try:
                 with open(candidate, "rb") as handle:
@@ -321,6 +349,7 @@ def load_settings(
     brain = BrainSettings(**_filter_fields(BrainSettings, raw.pop("brain", {}) or {}))
     executive = ExecutiveSettings(**_filter_fields(ExecutiveSettings, raw.pop("executive", {}) or {}))
     creation = CreationSettings(**_filter_fields(CreationSettings, raw.pop("creation", {}) or {}))
+    limits = LimitSettings(**_filter_fields(LimitSettings, raw.pop("limits", {}) or {}))
     voice = VoiceSettings(**_filter_fields(VoiceSettings, raw.pop("voice", {}) or {}))
     settings = Settings(
         providers=providers,
@@ -329,6 +358,7 @@ def load_settings(
         brain=brain,
         executive=executive,
         creation=creation,
+        limits=limits,
         voice=voice,
         **_filter_fields(Settings, raw),
     )

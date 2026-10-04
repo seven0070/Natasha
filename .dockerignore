@@ -1,0 +1,31 @@
+# Keep the build context small and make sure host state never enters the image.
+.git
+.gitignore
+.venv
+__pycache__
+**/__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+# Host data: the vault, databases, artifacts and logs live in the volume, never in the image.
+data
+db
+logs
+artifacts
+vault
+keys
+.env
+.env.*
+!.env.example
+
+# Tests and tooling are not needed at runtime.
+tests
+docs
+desktop
+*.md
+!README.md
+Dockerfile
+docker-compose.yml
+.dockerignore

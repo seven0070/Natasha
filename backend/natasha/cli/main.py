@@ -279,7 +279,11 @@ def cmd_tools(args: argparse.Namespace) -> int:
     runtime = _runtime()
     registry = runtime.tools
     if args.action == "list":
-        for spec in registry.describe():
+        specs = registry.describe()
+        if args.json:
+            _print(specs)
+            return 0
+        for spec in specs:
             flag = "approval" if spec["requires_approval"] else "auto"
             print(f"{spec['name']:24s} {spec['capability']:20s} {spec['risk']:9s} {flag:9s} "
                   f"{_bounded(spec['description'], 60)}")
