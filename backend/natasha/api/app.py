@@ -16,6 +16,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from ..core import get_paths, load_settings
 from ..events import EventKind
 from .auth import get_auth_manager
+from .ratelimit import RateLimited
 
 #: Everything the UI is allowed to call from another origin. Empty by default: the UI is served by
 #: this same server, so cross-origin access is a deliberate act, not an accident.
@@ -100,13 +101,21 @@ def create_app(runtime: Any = None, *, auth: Any = None, serve_ui: bool = True,
                     pass
         return response
 
+    @app.exception_handler(RateLimited)
+    async def rate_limited_handler(request: Request, exc: RateLimited) -> JSONResponse:
+        return JSONResponse(status_code=429, content={"detail": str(exc)},
+                            headers={"Retry-After": f"{exc.retry_after:.1f}"})
+
     @app.exception_handler(RequestValidationError)
     async def validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
         return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
     @app.exception_handler(StarletteHTTPException)
     async def http_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
-        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+        # Keep the headers the raiser set (Retry-After on a 429, WWW-Authenticate on a 401, ...);
+        # dropping them here would silently downgrade an honest error into a bare status code.
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail},
+                            headers=dict(getattr(exc, "headers", None) or {}))
 
     from .routers import ROUTERS
 

@@ -647,6 +647,8 @@ def cmd_providers(args: argparse.Namespace) -> int:
         for name, status in sorted(snapshot.items()):
             print(f"{name:20s} {status.get('state', '?'):10s} {_bounded(str(status.get('detail', '')), 60)}")
         return 0
+    if args.action in ("add", "enable", "disable"):
+        return _configure_provider(runtime, args)
     if args.action == "models":
         models = brain.providers.models.list() if hasattr(brain.providers.models, "list") else []
         for model in models:
@@ -669,6 +671,54 @@ def cmd_providers(args: argparse.Namespace) -> int:
             return 1
     print(f"unknown providers action {args.action!r}", file=sys.stderr)
     return 2
+
+
+def _configure_provider(runtime: Any, args: argparse.Namespace) -> int:
+    """Enable/disable a provider, and for a cloud provider store its key in the vault.
+
+    This is the CLI half of what the Providers screen does: the credential goes into the encrypted
+    vault through the credential manager (never into a settings file or the log), the provider's
+    ``credential_ref`` is bound to it, and the toggle is saved so the next process sees it.
+    """
+    name = (args.provider or args.name or "").strip()
+    if not name:
+        print("a provider name is required (--provider NAME)", file=sys.stderr)
+        return 2
+    catalogue = getattr(runtime.settings, "providers", {}) or {}
+    if name not in catalogue and not runtime.brain.providers.has(name):
+        known = ", ".join(sorted(set(catalogue) | set(runtime.brain.providers.names())))
+        print(f"unknown provider {name!r}. Known providers: {known}", file=sys.stderr)
+        return 2
+
+    if args.action in ("add", "enable"):
+        secret = args.secret
+        if args.action == "add" and not secret:
+            import getpass
+
+            secret = getpass.getpass(f"{name} API key (not echoed, empty for local servers): ")
+        reference = f"credential://{name}"
+        if secret:
+            runtime.credentials.store(reference, secret, kind="api_key", provider=name,
+                                      label=f"{name} API key", actor=CLI_ACTOR)
+            target = catalogue.get(name)
+            if target is not None:
+                target.credential_ref = reference
+    try:
+        toggled = runtime.brain.providers.set_enabled(name, args.action in ("add", "enable"))
+    except Exception as exc:
+        print(f"could not change {name}: {exc}", file=sys.stderr)
+        return 2
+    settings = getattr(runtime.brain.providers.get(name), "settings", None) or catalogue.get(name)
+
+    saved = runtime.settings.save()
+    state = "enabled" if settings.enabled else "disabled"
+    print(f"{name} {state} (settings: {saved})")
+    if args.action in ("add", "enable"):
+        print("run 'natasha providers models' to discover what it serves "
+              "(or start a local server first)")
+    if toggled.get("settings", {}).get("local"):
+        print(f"local provider: make sure a server is listening on {toggled['settings']['base_url']}")
+    return 0
 
 
 def cmd_backup(args: argparse.Namespace) -> int:
@@ -868,9 +918,12 @@ def build_parser() -> argparse.ArgumentParser:
     agents.set_defaults(func=cmd_agents)
 
     providers = sub.add_parser("providers", help="model providers")
-    providers.add_argument("action", choices=["list", "health", "models", "test"])
+    providers.add_argument("action",
+                           choices=["list", "health", "models", "test", "add", "enable", "disable"])
     providers.add_argument("--provider", default="")
     providers.add_argument("--model", default="")
+    providers.add_argument("--secret", default="", help="API key for 'add' (otherwise prompted)")
+    providers.add_argument("name", nargs="?", default="", help="provider name for add/enable/disable")
     providers.set_defaults(func=cmd_providers)
 
     backup = sub.add_parser("backup", help="back up Natasha's state")

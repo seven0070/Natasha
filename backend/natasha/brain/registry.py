@@ -111,6 +111,33 @@ class ProviderRegistry:
             self._adapters[adapter.name] = adapter
         return adapter
 
+    def set_enabled(self, name: str, enabled: bool) -> dict[str, Any]:
+        """Enable or disable a provider *from the configured catalogue*, not just the live set.
+
+        A provider that has never been enabled has no adapter yet, and a fresh install must still be
+        able to turn one on - so this consults ``settings.providers`` first, registers the adapter when
+        it is being enabled, and keeps the settings object authoritative either way. Disabling keeps
+        the adapter registered but inert, so the console can still show what was configured.
+        """
+        catalogue = getattr(self.settings, "providers", {}) or {}
+        provider_settings = catalogue.get(name)
+        if provider_settings is None and not self.has(name):
+            raise NotFoundError(f"provider {name!r} is not configured on this installation")
+        with self._lock:
+            adapter = self._adapters.get(name)
+        if adapter is None:
+            adapter = self.register_provider(name, provider_settings)
+        target = getattr(adapter, "settings", None)
+        if target is None:
+            target = provider_settings
+        if target is None:
+            raise NotFoundError(f"provider {name!r} has no settings to change")
+        target.enabled = bool(enabled)
+        state = _describe_settings(target)
+        self._health.pop(name, None)
+        return {"provider": name, "enabled": bool(enabled), "settings": state,
+                "registered": self.has(name)}
+
     # -- access ---------------------------------------------------------------- #
     def get(self, name: str) -> ProviderAdapter:
         with self._lock:
@@ -270,3 +297,14 @@ def reset_provider_registry() -> None:
     global _REGISTRY
     with _LOCK:
         _REGISTRY = None
+
+
+def _describe_settings(settings: Any) -> dict[str, Any]:
+    """Small helper so callers can report what a provider will use before it is enabled."""
+    return {
+        "enabled": bool(getattr(settings, "enabled", False)),
+        "base_url": str(getattr(settings, "base_url", "") or ""),
+        "credential_ref": str(getattr(settings, "credential_ref", "") or ""),
+        "local": bool(getattr(settings, "local", False)),
+        "default_model": str(getattr(settings, "default_model", "") or ""),
+    }

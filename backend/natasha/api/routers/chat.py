@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 
 from ...core import NatashaError
 from ...security.injection import ContentTrust, ExternalContent
-from ..deps import audit, get_runtime, handle, require_owner
+from ..deps import rate_limit, audit, get_runtime, handle, require_owner
 from ..models import ChatBody
 
 router = APIRouter(tags=["chat"])
@@ -47,7 +47,8 @@ def _turn(runtime: Any, body: ChatBody, principal: str) -> Any:
 
 
 @router.post("/chat")
-async def chat(body: ChatBody, request: Request, actor: str = Depends(require_owner)) -> dict[str, Any]:
+async def chat(body: ChatBody, request: Request, actor: str = Depends(require_owner),
+               limited: None = Depends(rate_limit("chat"))) -> dict[str, Any]:
     runtime = get_runtime(request)
     executive = runtime.executive
     if executive is None:
@@ -60,7 +61,8 @@ async def chat(body: ChatBody, request: Request, actor: str = Depends(require_ow
 
 
 @router.post("/chat/stream")
-async def chat_stream(body: ChatBody, request: Request, actor: str = Depends(require_owner)) -> StreamingResponse:
+async def chat_stream(body: ChatBody, request: Request, actor: str = Depends(require_owner),
+                      limited: None = Depends(rate_limit("chat"))) -> StreamingResponse:
     """Server-sent events: nicer for browsers that cannot hold a websocket open."""
     runtime = get_runtime(request)
     executive = runtime.executive
@@ -84,6 +86,16 @@ async def chat_socket(websocket: WebSocket) -> None:
     auth = getattr(websocket.app.state, "auth", None)
     if runtime is None:
         await websocket.send_json({"type": "error", "error": "runtime not started"})
+        await websocket.close()
+        return
+    try:
+        from ..deps import limiter_for
+
+        limiter = limiter_for(websocket)          # same budget as the HTTP chat endpoints
+        client = websocket.client.host if websocket.client else "local"
+        limiter.check("chat", f"ws:{client}")
+    except Exception as exc:
+        await websocket.send_json({"type": "error", "error": str(exc)})
         await websocket.close()
         return
     try:

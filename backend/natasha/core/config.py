@@ -39,6 +39,15 @@ class ProviderSettings:
 
 
 @dataclass
+class LimitSettings:
+    """API rate limits. Guards against runaway loops and passphrase guessing."""
+
+    enabled: bool = True
+    multiplier: float = 1.0            # >1 loosens every bucket, <1 tightens it
+    overrides: dict[str, Any] = field(default_factory=dict)   # bucket -> [per_minute, burst]
+
+
+@dataclass
 class SecuritySettings:
     """Security posture. Defaults are deliberately restrictive."""
 
@@ -161,6 +170,7 @@ class Settings:
     brain: BrainSettings = field(default_factory=BrainSettings)
     executive: ExecutiveSettings = field(default_factory=ExecutiveSettings)
     creation: CreationSettings = field(default_factory=CreationSettings)
+    limits: LimitSettings = field(default_factory=LimitSettings)
     voice: VoiceSettings = field(default_factory=VoiceSettings)
     features: dict[str, bool] = field(
         default_factory=lambda: {

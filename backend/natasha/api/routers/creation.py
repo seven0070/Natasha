@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from ..deps import audit, get_runtime, handle, require_owner
+from ..deps import rate_limit, audit, get_runtime, handle, require_owner
 from ..models import CreationBody
 
 router = APIRouter(prefix="/creation", tags=["creation"])
@@ -38,7 +38,8 @@ async def get_job(job_id: str, request: Request, actor: str = Depends(require_ow
 
 
 @router.post("/create")
-async def create(body: CreationBody, request: Request, actor: str = Depends(require_owner)) -> dict[str, Any]:
+async def create(body: CreationBody, request: Request, actor: str = Depends(require_owner),
+                 limited: None = Depends(rate_limit("creation"))) -> dict[str, Any]:
     try:
         job = await _engine(request).create(body.kind, body.brief, **body.options)
     except Exception as exc:

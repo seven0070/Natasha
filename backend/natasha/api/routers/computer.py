@@ -10,7 +10,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from ..deps import audit, get_runtime, handle, require_owner
+from ..deps import rate_limit, audit, get_runtime, handle, require_owner
 from ..models import BrowserBody
 
 router = APIRouter(prefix="/computer", tags=["computer"])
@@ -58,7 +58,8 @@ async def screenshot(request: Request, name: str = "", actor: str = Depends(requ
 
 @router.post("/click")
 async def click(request: Request, x: int, y: int, button: str = "left", clicks: int = 1,
-                approval_id: str = "", actor: str = Depends(require_owner)) -> dict[str, Any]:
+                approval_id: str = "", actor: str = Depends(require_owner),
+                limited: None = Depends(rate_limit("computer"))) -> dict[str, Any]:
     try:
         return _controller(request).click(x, y, button=button, clicks=clicks, actor=actor,
                                           approval_id=approval_id)
@@ -68,7 +69,8 @@ async def click(request: Request, x: int, y: int, button: str = "left", clicks: 
 
 @router.post("/type")
 async def type_text(request: Request, text: str, approval_id: str = "",
-                    actor: str = Depends(require_owner)) -> dict[str, Any]:
+                    actor: str = Depends(require_owner),
+                    limited: None = Depends(rate_limit("computer"))) -> dict[str, Any]:
     try:
         return _controller(request).type_text(text, actor=actor, approval_id=approval_id)
     except Exception as exc:
@@ -77,7 +79,8 @@ async def type_text(request: Request, text: str, approval_id: str = "",
 
 @router.post("/key")
 async def press(request: Request, key: str, presses: int = 1, approval_id: str = "",
-                actor: str = Depends(require_owner)) -> dict[str, Any]:
+                actor: str = Depends(require_owner),
+                limited: None = Depends(rate_limit("computer"))) -> dict[str, Any]:
     try:
         return _controller(request).press(key, presses=presses, actor=actor, approval_id=approval_id)
     except Exception as exc:
@@ -86,7 +89,8 @@ async def press(request: Request, key: str, presses: int = 1, approval_id: str =
 
 @router.post("/launch")
 async def launch(request: Request, command: str, approval_id: str = "",
-                 actor: str = Depends(require_owner)) -> dict[str, Any]:
+                 actor: str = Depends(require_owner),
+                 limited: None = Depends(rate_limit("computer"))) -> dict[str, Any]:
     try:
         return _controller(request).launch(command, actor=actor, approval_id=approval_id)
     except Exception as exc:

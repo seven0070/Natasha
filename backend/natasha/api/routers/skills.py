@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from ..deps import audit, get_runtime, handle, require_owner
+from ..deps import rate_limit, audit, get_runtime, handle, require_owner
 from ..models import SkillRunBody
 
 router = APIRouter(prefix="/skills", tags=["skills"])
@@ -36,7 +36,8 @@ async def get_skill(skill_id: str, request: Request, version: str = "",
 
 @router.post("/install")
 async def install_skill(request: Request, path: str, activate: bool = True,
-                        actor: str = Depends(require_owner)) -> dict[str, Any]:
+                        actor: str = Depends(require_owner),
+                        limited: None = Depends(rate_limit("skills"))) -> dict[str, Any]:
     """Install a skill from a local directory. Validation and scans run first."""
     lifecycle = _lifecycle(request)
     try:
@@ -97,7 +98,8 @@ async def uninstall_skill(skill_id: str, request: Request, version: str = "", pu
 
 @router.post("/{skill_id}/run")
 async def run_skill(skill_id: str, body: SkillRunBody, request: Request,
-                    actor: str = Depends(require_owner)) -> dict[str, Any]:
+                    actor: str = Depends(require_owner),
+                    limited: None = Depends(rate_limit("skills"))) -> dict[str, Any]:
     runtime = get_runtime(request)
     if runtime.skill_runtime is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "the skill runtime is unavailable")

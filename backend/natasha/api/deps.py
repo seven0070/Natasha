@@ -61,6 +61,11 @@ def require_owner(request: Request) -> str:
 
 def handle(exc: Exception) -> HTTPException:
     """Map internal errors onto honest HTTP responses."""
+    from .ratelimit import RateLimited
+
+    if isinstance(exc, RateLimited):
+        return HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, str(exc),
+                             headers={"Retry-After": f"{exc.retry_after:.1f}"})
     if isinstance(exc, PolicyDenied):
         return HTTPException(status.HTTP_403_FORBIDDEN, str(exc))
     from ..core import ApprovalRequired, NotFoundError, ConflictError
@@ -92,3 +97,63 @@ def audit(runtime: Any, action: str, payload: dict[str, Any], *, actor: str = "o
 def owner_actor(actor: str) -> str:
     """Requests authenticated as the owner act as the owner; anything else keeps its identity."""
     return actor or "owner"
+
+
+def _client_key(request: Request) -> str:
+    """Identify the caller for rate limiting: address first, session second."""
+    address = ""
+    if request.client is not None:
+        address = request.client.host or ""
+    for header in ("X-Forwarded-For", "X-Real-IP"):
+        forwarded = request.headers.get(header)
+        if forwarded:
+            address = forwarded.split(",")[0].strip()
+            break
+    token = request.headers.get("X-Natasha-Token", "")[:16]
+    return f"{address or 'local'}|{token}"
+
+
+def limiter_for(request: Any) -> Any:
+    """The limiter for this application instance (one budget per server, not per process).
+
+    Scoping it to the app also keeps two runtimes in one process (tests, embedded use) from spending
+    each other's budget.
+    """
+    from .ratelimit import RateLimiter
+
+    state = getattr(request.app, "state", None)
+    existing = getattr(state, "limiter", None)
+    if existing is not None:
+        return existing
+    runtime = getattr(state, "runtime", None)
+    settings = getattr(runtime, "settings", None)
+    limits = getattr(settings, "limits", None)
+    limiter = RateLimiter(enabled=bool(getattr(limits, "enabled", True)),
+                          multiplier=float(getattr(limits, "multiplier", 1.0) or 1.0),
+                          overrides=dict(getattr(limits, "overrides", {}) or {}))
+    if state is not None:
+        state.limiter = limiter
+    return limiter
+
+
+def rate_limit(bucket: str, *, rate: float | None = None, burst: int | None = None) -> Any:
+    """Dependency factory: guard an endpoint with a named bucket.
+
+    The default table lives in ``api.ratelimit``; passing ``rate``/``burst`` overrides it for one
+    route (used by the auth endpoints, which are the ones worth brute-forcing).
+    """
+
+    def dependency(request: Request) -> None:
+        limiter = limiter_for(request)
+        if rate is not None:
+            limiter.overrides[bucket] = (float(rate), int(burst or max(1, rate / 6)))
+        from .ratelimit import RateLimited
+
+        try:
+            limiter.check(bucket, _client_key(request))
+        except RateLimited as exc:
+            # Translate here as well as in the app handler: a dependency failure must be an honest
+            # 429 with Retry-After, not a 500.
+            raise handle(exc) from exc
+
+    return dependency

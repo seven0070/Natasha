@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 
 from ...core import run_coroutine_sync
-from ..deps import audit, get_runtime, handle, require_owner
+from ..deps import rate_limit, audit, get_runtime, handle, require_owner
 from ..models import VoiceBody, VoiceTurnBody
 
 router = APIRouter(prefix="/voice", tags=["voice"])
@@ -66,7 +66,8 @@ async def voices(request: Request, limit: int = 200, actor: str = Depends(requir
 
 
 @router.post("/speak")
-async def speak(body: VoiceBody, request: Request, actor: str = Depends(require_owner)) -> dict[str, Any]:
+async def speak(body: VoiceBody, request: Request, actor: str = Depends(require_owner),
+                limited: None = Depends(rate_limit("voice"))) -> dict[str, Any]:
     try:
         result = _engine(request).speak(body.text, voice=body.voice, out_path=body.out_path,
                                         play=body.play, actor=actor)
@@ -129,7 +130,8 @@ async def loop_status(request: Request, limit: int = 20, actor: str = Depends(re
 
 
 @router.post("/turn")
-async def turn(body: VoiceTurnBody, request: Request, actor: str = Depends(require_owner)) -> dict[str, Any]:
+async def turn(body: VoiceTurnBody, request: Request, actor: str = Depends(require_owner),
+               limited: None = Depends(rate_limit("voice"))) -> dict[str, Any]:
     """One voice turn: text in, or record from the microphone, then reply and speak it."""
     loop = _loop(request)
     runtime = get_runtime(request)

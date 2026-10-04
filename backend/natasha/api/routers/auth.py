@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from ..auth import AuthError
-from ..deps import audit, handle, require_owner
+from ..deps import audit, handle, rate_limit, require_owner
 from ..models import ChangePassphraseBody, LoginBody, SetupBody
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -43,7 +43,8 @@ async def auth_status(request: Request) -> dict[str, Any]:
 
 
 @router.post("/setup")
-async def setup(body: SetupBody, request: Request) -> dict[str, Any]:
+async def setup(body: SetupBody, request: Request,
+                limited: None = Depends(rate_limit("login"))) -> dict[str, Any]:
     manager = _auth(request)
     if not _is_loopback(request):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "owner setup is only allowed from this machine")
@@ -56,7 +57,8 @@ async def setup(body: SetupBody, request: Request) -> dict[str, Any]:
 
 
 @router.post("/login")
-async def login(body: LoginBody, request: Request) -> dict[str, Any]:
+async def login(body: LoginBody, request: Request,
+                limited: None = Depends(rate_limit("login"))) -> dict[str, Any]:
     manager = _auth(request)
     try:
         token = manager.login(body.passphrase, client=body.client)

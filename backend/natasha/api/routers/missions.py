@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from ...missions.models import MissionState
-from ..deps import audit, get_runtime, handle, require_owner
+from ..deps import rate_limit, audit, get_runtime, handle, require_owner
 from ..models import MissionBody
 
 router = APIRouter(prefix="/missions", tags=["missions"])
@@ -31,7 +31,8 @@ async def list_missions(request: Request, state: str = "", limit: int = 50,
 
 
 @router.post("")
-async def create_mission(body: MissionBody, request: Request, actor: str = Depends(require_owner)) -> dict[str, Any]:
+async def create_mission(body: MissionBody, request: Request, actor: str = Depends(require_owner),
+                         limited: None = Depends(rate_limit("missions"))) -> dict[str, Any]:
     engine = _engine(request)
     try:
         mission = engine.create(body.objective, title=body.title, success_criteria=body.success_criteria,
@@ -62,7 +63,8 @@ async def get_mission(mission_id: str, request: Request, actor: str = Depends(re
 
 
 @router.post("/{mission_id}/run")
-async def run_mission(mission_id: str, request: Request, actor: str = Depends(require_owner)) -> dict[str, Any]:
+async def run_mission(mission_id: str, request: Request, actor: str = Depends(require_owner),
+                      limited: None = Depends(rate_limit("missions"))) -> dict[str, Any]:
     try:
         result = await _engine(request).run(mission_id, actor=actor)
         return result.to_dict()
@@ -79,7 +81,8 @@ async def pause_mission(mission_id: str, request: Request, actor: str = Depends(
 
 
 @router.post("/{mission_id}/resume")
-async def resume_mission(mission_id: str, request: Request, actor: str = Depends(require_owner)) -> dict[str, Any]:
+async def resume_mission(mission_id: str, request: Request, actor: str = Depends(require_owner),
+                         limited: None = Depends(rate_limit("missions"))) -> dict[str, Any]:
     try:
         result = await _engine(request).resume(mission_id, actor=actor)
         return result.to_dict()
@@ -97,7 +100,8 @@ async def cancel_mission(mission_id: str, request: Request, reason: str = "",
 
 
 @router.post("/{mission_id}/verify")
-async def verify_mission(mission_id: str, request: Request, actor: str = Depends(require_owner)) -> dict[str, Any]:
+async def verify_mission(mission_id: str, request: Request, actor: str = Depends(require_owner),
+                         limited: None = Depends(rate_limit("missions"))) -> dict[str, Any]:
     engine = _engine(request)
     try:
         report = await engine.verify(engine.get(mission_id), actor=actor)

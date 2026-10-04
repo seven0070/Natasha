@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from ..deps import audit, get_runtime, handle, require_owner
+from ..deps import rate_limit, audit, get_runtime, handle, require_owner
 from ..models import MCPCallBody, MCPInstallBody
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
@@ -26,7 +26,8 @@ async def servers(request: Request, actor: str = Depends(require_owner)) -> dict
 
 
 @router.post("")
-async def configure(body: MCPInstallBody, request: Request, actor: str = Depends(require_owner)) -> dict[str, Any]:
+async def configure(body: MCPInstallBody, request: Request, actor: str = Depends(require_owner),
+                    limited: None = Depends(rate_limit("mcp"))) -> dict[str, Any]:
     """Register (or update) an MCP server definition. Installing is a separate step."""
     from ...mcp.registry import MCPServer
 
@@ -52,7 +53,8 @@ async def get_server(name: str, request: Request, actor: str = Depends(require_o
 
 @router.post("/{name}/install")
 async def install_server(name: str, request: Request, approval_id: str = "",
-                         actor: str = Depends(require_owner)) -> dict[str, Any]:
+                         actor: str = Depends(require_owner),
+                         limited: None = Depends(rate_limit("mcp"))) -> dict[str, Any]:
     try:
         server = await _registry(request).install(name, actor=actor, approval_id=approval_id)
     except Exception as exc:
@@ -106,7 +108,8 @@ async def server_tools(name: str, request: Request, actor: str = Depends(require
 
 @router.post("/{name}/call/{tool_name}")
 async def call_tool(name: str, tool_name: str, body: MCPCallBody, request: Request,
-                    actor: str = Depends(require_owner)) -> dict[str, Any]:
+                    actor: str = Depends(require_owner),
+                    limited: None = Depends(rate_limit("mcp"))) -> dict[str, Any]:
     try:
         result = await _registry(request).call(name, tool_name, body.arguments)
     except Exception as exc:

@@ -152,21 +152,13 @@ async def set_routing(body: RoutingBody, request: Request, actor: str = Depends(
 def _set_enabled(request: Request, name: str, enabled: bool) -> dict[str, Any]:
     registry = _brain(request).providers
     try:
-        adapter = registry.get(name)
+        result = registry.set_enabled(name, enabled)
     except Exception as exc:
         raise handle(exc) from exc
     runtime = get_runtime(request)
-    settings = getattr(adapter, "settings", None)
-    if settings is None:
-        # Adapters built without their own settings still map onto the configured catalogue.
-        catalogue = getattr(runtime.settings, "providers", {}) or {}
-        settings = catalogue.get(name)
-    if settings is None:
-        raise HTTPException(status.HTTP_409_CONFLICT, f"provider {name!r} has no settings to change")
-    settings.enabled = enabled
     try:
         runtime.settings.save()
     except Exception:
         pass
     audit(runtime, "provider_toggled", {"provider": name, "enabled": enabled}, risk="MEDIUM")  # type: ignore[arg-type]
-    return {"provider": name, "enabled": enabled, "ok": True}
+    return {**result, "ok": True}
