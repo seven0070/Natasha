@@ -53,6 +53,9 @@ git log --oneline -2
   voice_loop`.
 * `python3 -m natasha.cli --json doctor` → `{"health": {"runtime": {"ok": true, "degraded": []}, …}}`
   (note: `--json` is a top-level flag, so it goes *before* the subcommand).
+* Final confirmation run (step 22): `pytest -q` → **494 passed, 1 warning in 58.01 s**, with only this
+  report and the matrix update in the working tree; they are committed together as the last commit of
+  the validation pass, after which `git status --short` is empty again.
 
 ## 3. Test execution results
 
@@ -177,7 +180,20 @@ A TestClient walk with a fresh `NATASHA_HOME` produced:
   `/api/integrations/not-a-connector`, `/api/mcp/not-a-server`); unknown skill → **400** by design;
   empty bodies → **422**; `POST /api/chat/turn` → **405** (chat is `POST /api/chat` and
   `POST /api/chat/stream`, chat-WS is `WS /api/ws/chat`);
-* a sweep of **all 61 parameterless GET paths → zero 5xx**.
+* a sweep of **all 61 parameterless GET paths → zero 5xx**;
+* **WebSocket** (`WS /api/ws/chat`, the fallback the UI uses when SSE is unavailable): without a token
+  the socket receives `{"type": "error", "error": "owner authentication required"}` and is closed with
+  code 4401; with the owner token a live turn streams 13 frames —
+  `turn_started`, 11 `token` deltas, `turn_finished` — carrying the honest offline-placeholder reply
+  (covered by `test_api_chain.py::test_the_websocket_refuses_an_unauthenticated_client` and
+  `…::test_the_websocket_runs_a_turn_for_the_owner`, plus the shared-rate-budget test);
+* **403 (policy denial)**, exercised live: `POST /api/vision/analyse {"path": "/etc/passwd"}` →
+  *"refusing to read outside permitted roots"*; `GET /api/artifacts/content|download?path=/etc/passwd`
+  → *"that path is outside the artifacts directory"*.
+  Note the deliberate design choice that a **tool** refusal is reported as HTTP 200 with
+  `{"ok": false, "error": "policy denied: …"}` — the tool-run endpoint reports the outcome of the run
+  (including a policy refusal) instead of dressing it as a transport error, which keeps the audit trail
+  and the API response agreeing with each other.
 
 Five paths I initially probed are simply not part of the contract and are therefore not defects:
 `/api/models`, `/api/perception/*`, `/api/evolution/*`, `/api/credentials`, `/api/world/*`.
@@ -262,9 +278,14 @@ Named properties proven by tests (each is a real assertion, not a smoke check):
   not transfer to a different recipient, and the execution is audited with the owner actor.
 * **Injection:** 32 tests across the injection matrix — external content is data, never authority;
   MCP/skill output is marked untrusted; governance/security operations are never auto-repaired.
-* **Credentials:** vault-backed, never plaintext on disk or in logs; the event log sanitizer redacts
-  secrets; environment variables named like keys are deliberately ignored; a provider error never
-  leaks a credential; memories are sanitized before storage.
+* **Credentials:** vault-backed, never plaintext on disk or in logs. Verified end to end during this
+  pass: storing `sk-live-SUPERSECRET-…` through the credential manager in a fresh home produces a
+  32-byte random `keys/master.key` and an AES-256-GCM ciphertext row in `db/vault.db`
+  (`{"alg": "AES-256-GCM", "ct": …}`) with only a fingerprint in the metadata — and a plaintext scan
+  of **every file** under that home (`grep -rl SUPERSECRET`) returns **0 files**, events database
+  included. The event log sanitizer redacts secrets; environment variables named like keys are
+  deliberately ignored; a provider error never leaks a credential; memories are sanitized before
+  storage.
 * **Governance:** 33 adversarial tests (self-approval, protected auto-apply, audit disabling,
   owner-authority removal, security weakening, constitutional edits, rollback removal).
 * **Process hygiene:** 6 tests prove timed-out tool processes are reaped, not leaked.
