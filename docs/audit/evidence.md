@@ -12,32 +12,36 @@ stated with the exact command that would close it.
 ## 1. The suite
 
 ```console
-$ cd /home/user/Natasha && python3 -m pytest tests -p no:randomly -q --tb=no -p no:warnings
-........................................................................ [ 16%]
-........................................................................ [ 33%]
-........................................................................ [ 50%]
-........................................................................ [ 66%]
-........................................................................ [ 83%]
-........................................................................ [100%]
+$ cd /home/user/Natasha && python3 -m pytest --override-ini addopts="" -q
+........................................................................ [ 14%]
+........................................................................ [ 29%]
+........................................................................ [ 43%]
+........................................................................ [ 58%]
+........................................................................ [ 72%]
+........................................................................ [ 87%]
+..............................................................           [100%]
+494 passed, 1 warning in 51.83s
 ```
 
 ```console
-$ python3 -m pytest tests --collect-only -q | awk -F': ' '/: [0-9]+$/ {s+=$2} END {print s}'
-450
+$ python3 -m pytest --override-ini addopts="" --collect-only -q | tail -1
+494 tests collected in 1.47s
 ```
 
-Per category (collected tests, i.e. after parametrisation):
+Per category (collected tests, i.e. after parametrisation). Re-measured by the
+[full repository validation pass](validation-report.md) on 2026-10-04:
 
 | category | files | collected tests | what it covers |
 | --- | --- | --- | --- |
-| `tests/unit` | 13 | 119 | policy, approvals, credentials, events, injection, isolation, memory manager, provider toggle/fallback, core, migrations, API contract, deployment artifacts |
-| `tests/integration` | 16 | 209 | the API surface and chains: chat, memory, missions, MCP, skills, providers, world, verification, recovery, approvals, rate limits, CLI, API skills install |
-| `tests/security` | 3 | 86 | governor adversarial suite, permission matrix, injection matrix (parametrised) |
-| `tests/e2e` | 4 | 8 | the 14-stage pipeline, the real server + restart, restart durability |
+| `tests/unit` | 14 | 126 | policy, approvals, credentials, events, injection, isolation, memory manager, provider toggle/fallback, core, migrations, API contract, deployment artifacts, frontend syntax |
+| `tests/integration` | 18 | 240 | the API surface and chains: chat, memory, missions, MCP, skills, providers, world, verification, recovery, approvals, rate limits, CLI, API skills install, perception + computer use, creation artifacts, integration tools |
+| `tests/security` | 4 | 92 | governor adversarial suite, permission matrix, injection matrix (parametrised), process reaping |
+| `tests/e2e` | 4 | 8 | the pipeline walk, the real server + restart, restart durability |
 | `tests/architecture` | 1 | 28 | the layer rules, measured on the repository (parametrised) |
 
-`pytest -p no:randomly` is used for the recorded run so the order is reproducible; the suite also
-passes with random ordering.
+The single warning is third-party (`fastapi/testclient.py` advising `httpx2`); no warning originates in
+Natasha code. `--override-ini addopts=""` clears the repository's own `-q` so the summary line is
+visible — passing `-q` a second time silences it. The suite also passes with random ordering.
 
 ## 2. The architecture gate
 
