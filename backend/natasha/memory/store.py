@@ -143,7 +143,8 @@ class MemoryStore:
                         {"action": "added", "memory_id": record.id, "kind": record.kind.value,
                          "summary": record.summary[:200], "importance": record.importance,
                          "tags": record.tags, "provenance": record.provenance.to_dict()},
-                        actor=actor, source="memory.store")
+                        actor=actor, source="memory.store",
+                        trace_id=record.provenance.trace_id, mission_id=record.provenance.mission_id)
         return record
 
     def get(self, memory_id: str, *, actor: str = "owner", touch: bool = True) -> MemoryRecord:

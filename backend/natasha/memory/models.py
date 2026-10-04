@@ -45,18 +45,20 @@ class Provenance:
     actor: str = "owner"
     reference: str = ""               # file path, URL, tool name, event id...
     mission_id: str = ""
+    trace_id: str = ""                # the turn/request that produced this memory
     event_id: str = ""
     trust: str = "owner"              # owner | verified | external | inferred
 
     def to_dict(self) -> dict[str, Any]:
         return {"source": self.source, "actor": self.actor, "reference": self.reference,
-                "mission_id": self.mission_id, "event_id": self.event_id, "trust": self.trust}
+                "mission_id": self.mission_id, "trace_id": self.trace_id,
+                "event_id": self.event_id, "trust": self.trust}
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "Provenance":
         data = data or {}
         return cls(**{key: data.get(key, getattr(cls(), key)) for key in
-                      ("source", "actor", "reference", "mission_id", "event_id", "trust")})
+                      ("source", "actor", "reference", "mission_id", "trace_id", "event_id", "trust")})
 
 
 @dataclass

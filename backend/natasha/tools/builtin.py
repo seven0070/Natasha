@@ -405,8 +405,9 @@ class MemoryRememberTool(Tool):
             MemoryKind(arguments.get("kind", "semantic")), arguments["content"],
             tags=arguments.get("tags") or [], entities=arguments.get("entities") or [],
             importance=float(arguments.get("importance", 0.5)),
-            provenance=Provenance(source="conversation", actor=context.actor,
-                                  mission_id=context.mission_id,
+            provenance=Provenance(source="tool" if context.trace_id else "conversation",
+                                  actor=context.actor, mission_id=context.mission_id,
+                                  trace_id=context.trace_id,
                                   trust="owner" if context.actor.startswith("owner") else "inferred"),
             actor=context.actor,
         )

@@ -1,20 +1,27 @@
-"""High-level memory API used by the executive loop, workers and the UI."""
+"""High-level memory API used by the executive loop, workers and the UI.
+
+This is a deliberately thin façade: it never re-implements retrieval or storage, it only composes
+the store, working memory and provenance so callers (tools, workers, UI helpers) do not have to
+know the storage details. Everything it exposes is exercised by tests/unit/test_memory_manager.py,
+because a stale convenience layer is worse than none at all.
+"""
 
 from __future__ import annotations
 
 import threading
 from typing import Any, Iterable
 
-from ..core.risk import RiskLevel
 from .models import MemoryKind, MemoryRecord, Provenance
 from .store import MemoryStore, get_memory_store
+from .working import get_working_memory
 
 
 class MemoryManager:
-    """Coordinates working memory, durable memory and honest recall."""
+    """Coordinates durable memory, working memory and honest recall."""
 
     def __init__(self, store: MemoryStore | None = None) -> None:
         self.store = store or get_memory_store()
+        self.working = get_working_memory()
 
     # -- writing --------------------------------------------------------------- #
     def remember(
@@ -33,10 +40,12 @@ class MemoryManager:
         event_id: str = "",
         metadata: dict[str, Any] | None = None,
     ) -> MemoryRecord:
+        """Store one durable memory, recording exactly where it came from."""
         return self.store.add(
-            kind, content, importance=importance, confidence=confidence, tags=tags, entities=entities,
-            provenance=Provenance(source=source, actor=actor, mission_id=mission_id, trace_id=trace_id, event_id=event_id),
-            metadata=metadata,
+            kind, content, importance=importance, confidence=confidence, tags=tags,
+            entities=entities, actor=actor, metadata=metadata,
+            provenance=Provenance(source=source, actor=actor, mission_id=mission_id,
+                                  trace_id=trace_id, event_id=event_id),
         )
 
     def remember_turn(self, user: str, assistant: str, *, actor: str = "owner", mission_id: str = "",
@@ -45,19 +54,21 @@ class MemoryManager:
         records = [
             self.store.add(
                 MemoryKind.EPISODIC, f"Owner: {user}", importance=0.45, confidence=1.0,
-                provenance=Provenance(source="conversation", actor=actor, mission_id=mission_id, trace_id=trace_id),
-                tags=["conversation", "owner"], embed=True,
+                actor=actor, tags=["conversation", "owner"],
+                provenance=Provenance(source="conversation", actor=actor, mission_id=mission_id,
+                                      trace_id=trace_id),
             ),
         ]
         if assistant.strip():
             records.append(
                 self.store.add(
                     MemoryKind.EPISODIC, f"Natasha: {assistant}", importance=0.35, confidence=0.7,
-                    provenance=Provenance(source="conversation", actor="model:main", mission_id=mission_id, trace_id=trace_id),
-                    tags=["conversation", "assistant"], embed=True,
+                    actor="model:main", tags=["conversation", "assistant"],
+                    provenance=Provenance(source="conversation", actor="model:main",
+                                          mission_id=mission_id, trace_id=trace_id),
                 )
             )
-        self.store.working.put("last_turn", f"{user} || {assistant}"[:1000])
+        self.working.push(f"{user} || {assistant}"[:1000], role="turn", mission_id=mission_id)
         return records
 
     def learn_procedure(self, name: str, steps: list[str], *, confidence: float = 0.7,
@@ -65,16 +76,14 @@ class MemoryManager:
         body = "\n".join(f"{index + 1}. {step}" for index, step in enumerate(steps))
         return self.store.add(
             MemoryKind.PROCEDURAL, f"{name}\n{body}", tags=["procedure", name], importance=0.7,
-            confidence=confidence, provenance=Provenance(source="owner", actor=actor),
+            confidence=confidence, actor=actor,
+            provenance=Provenance(source="owner", actor=actor),
         )
 
     def note_artifact(self, path: str, *, description: str, mission_id: str = "",
                       actor: str = "system") -> MemoryRecord:
-        return self.store.add(
-            MemoryKind.ARTIFACT, f"{path}: {description}", tags=["artifact"], importance=0.5,
-            provenance=Provenance(source="creation", actor=actor, mission_id=mission_id, uri=path),
-            metadata={"path": path},
-        )
+        return self.store.note_artifact(str(path), description=description,
+                                        mission_id=mission_id, actor=actor)
 
     # -- reading --------------------------------------------------------------- #
     def recall(
@@ -84,34 +93,40 @@ class MemoryManager:
         k: int = 12,
         kinds: list[MemoryKind | str] | None = None,
         mission_id: str = "",
-        tags: Iterable[str] = (),
         include_superseded: bool = False,
-    ) -> list[MemoryRecord]:
-        return self.store.recall(
-            query, k=k, kinds=kinds, mission_id=mission_id, tags=tags, include_superseded=include_superseded
-        )
+        actor: str = "model:main",
+    ) -> list[Any]:
+        """Hybrid recall, straight from the store (same path the orchestrator uses)."""
+        return self.store.recall(query, kinds=kinds, limit=k, mission_id=mission_id,
+                                 include_superseded=include_superseded, actor=actor)
 
     def recall_context(self, query: str, *, k: int = 8, mission_id: str = "") -> dict[str, Any]:
         """Recall plus score explanation - what the UI shows under "why I remember this"."""
-        hit = self.store.search(query, k=k, mission_id=mission_id)
+        scored = self.store.recall(query, limit=k, mission_id=mission_id)
         return {
             "query": query,
             "memories": [
                 {
-                    "id": scored.record.id, "kind": scored.record.kind.value, "content": scored.record.content,
-                    "score": round(scored.score, 4), "breakdown": scored.breakdown,
-                    "confidence": scored.record.confidence, "source": scored.record.provenance.source,
-                    "created_at": scored.record.created_at, "superseded": bool(scored.record.superseded_by),
+                    "id": hit.record.id, "kind": hit.record.kind.value, "content": hit.record.content,
+                    "summary": hit.record.summary, "score": round(hit.score, 4),
+                    "breakdown": dict(hit.parts),
+                    "confidence": hit.record.confidence, "source": hit.record.provenance.source,
+                    "created_at": hit.record.created_at,
+                    "superseded": bool(hit.record.superseded_by),
                 }
-                for scored in hit.memories
+                for hit in scored
             ],
-            "considered": hit.considered,
+            "count": len(scored),
         }
 
     # -- correction ------------------------------------------------------------ #
-    def correct(self, memory_id: str, new_content: str, *, reason: str = "", actor: str = "owner") -> dict[str, Any]:
-        original, replacement = self.store.correct(memory_id, new_content, reason=reason, actor=actor)
-        return {"superseded": original.id, "replacement": replacement.id, "reason": reason or "owner correction"}
+    def correct(self, memory_id: str, new_content: str, *, reason: str = "",
+                actor: str = "owner") -> dict[str, Any]:
+        """Correcting never overwrites: the original is superseded and both stay on the record."""
+        replacement = self.store.correct(memory_id, content=new_content, reason=reason, actor=actor)
+        original = self.store.get(memory_id, actor=actor, touch=False)
+        return {"superseded": original.to_dict(), "replacement": replacement.to_dict(),
+                "reason": reason or "owner correction"}
 
     def forget(self, **kwargs: Any) -> int:
         return self.store.forget(**kwargs)
@@ -124,10 +139,10 @@ _MANAGERS: dict[str, MemoryManager] = {}
 _LOCK = threading.Lock()
 
 
-def get_memory_manager() -> MemoryManager:
+def get_memory_manager(store: MemoryStore | None = None) -> MemoryManager:
     with _LOCK:
-        if "default" not in _MANAGERS:
-            _MANAGERS["default"] = MemoryManager()
+        if "default" not in _MANAGERS or store is not None:
+            _MANAGERS["default"] = MemoryManager(store)
         return _MANAGERS["default"]
 
 

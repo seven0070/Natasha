@@ -6,6 +6,7 @@ system's dependencies are connected - and one place to see what is actually runn
 
 from __future__ import annotations
 
+import importlib
 import threading
 from dataclasses import dataclass, field
 from typing import Any
@@ -443,7 +444,21 @@ class NatashaRuntime:
         return applied
 
     def shutdown(self) -> None:
-        for component in (self.mcp, self.skill_runtime):
+        """Stop everything this runtime owns, in dependency order, without raising.
+
+        Every subsystem that owns a database handle or a subprocess is closed here, so a restart on
+        the same home starts from durable, flushed state (and a test that builds two runtimes in one
+        process never leaves a half-open database behind).
+        """
+        names = ("mcp", "skill_runtime", "browser", "computer", "approvals", "missions",
+                 "memory", "world", "credentials", "vault", "marketplace", "governor",
+                 "observability", "log")
+        seen: set[int] = set()
+        for name in names:
+            component = getattr(self, name, None)
+            if component is None or id(component) in seen:
+                continue
+            seen.add(id(component))
             close = getattr(component, "close", None)
             if close is None:
                 continue
@@ -455,11 +470,70 @@ class NatashaRuntime:
                     run_coroutine_sync(result)
             except Exception:
                 pass
-        try:
-            self.log.close()
-        except Exception:
-            pass
         self._started = False
+        _drop_subsystem_caches()
+
+
+#: Process-wide caches the runtime hands out. Closing the objects without dropping the cache would
+#: leave the next runtime (or the next ``natasha`` command in the same process) holding a closed
+#: database handle - the same class of bug the per-runtime perception engines avoid.
+_CACHES: tuple[tuple[str, str], ...] = (
+    ("natasha.events.log", "reset_event_logs"),
+    ("natasha.memory", "reset_memory_store"),
+    ("natasha.memory.working", "reset_working_memory"),
+    ("natasha.world", "reset_world_model"),
+    ("natasha.tools.registry", "reset_tool_registry"),
+    ("natasha.brain.client", "reset_brain"),
+    ("natasha.brain.models", "reset_model_registry"),
+    ("natasha.brain.registry", "reset_provider_registry"),
+    ("natasha.brain.usage", "reset_usage_tracker"),
+    ("natasha.approvals.engine", "reset_approval_engines"),
+    ("natasha.credentials.manager", "reset_credential_managers"),
+    ("natasha.credentials.broker", "reset_brokers"),
+    ("natasha.missions", "reset_mission_engine"),
+    ("natasha.missions.store", "reset_mission_store"),
+    ("natasha.missions.supervisor", "reset_supervisor"),
+    ("natasha.verification.engine", "reset_verification_engine"),
+    ("natasha.recovery", "reset_recovery_engine"),
+    ("natasha.executive.orchestrator", "reset_executive"),
+    ("natasha.agents.team", "reset_agent_team"),
+    ("natasha.skills.lifecycle", "reset_skill_lifecycle"),
+    ("natasha.skills.runtime", "reset_skill_runtime"),
+    ("natasha.marketplace.installer", "reset_marketplace_installer"),
+    ("natasha.marketplace.registry", "reset_marketplace_registry"),
+    ("natasha.mcp.registry", "reset_mcp_registry"),
+    ("natasha.integrations.base", "reset_integration_registry"),
+    ("natasha.affect", "reset_affect_engine"),
+    ("natasha.observability", "reset_metrics"),
+    ("natasha.observability.health", "reset_health_monitor"),
+    ("natasha.observability.tracing", "reset_tracer"),
+    ("natasha.governance.upgrade_governor", "reset_upgrade_governors"),
+    ("natasha.db.migrations", "reset_migration_runner"),
+    ("natasha.computer.controller", "reset_computer_controller"),
+    ("natasha.computer.browser", "reset_browser_controller"),
+)
+
+
+def _drop_subsystem_caches() -> list[str]:
+    """Drop every cached subsystem. Returns the hooks that could not be run (never raises)."""
+    failures: list[str] = []
+    for module_name, function_name in _CACHES:
+        try:
+            module = importlib.import_module(module_name)
+        except Exception as exc:  # pragma: no cover - an unimportable optional subsystem
+            failures.append(f"{module_name}: {type(exc).__name__}")
+            continue
+        function = getattr(module, function_name, None)
+        if not callable(function):
+            # A missing hook means a cache would survive the shutdown holding a closed handle;
+            # report it instead of pretending the runtime stopped cleanly.
+            failures.append(f"{module_name}.{function_name}: not found")
+            continue
+        try:
+            function()
+        except Exception as exc:  # pragma: no cover - resetting must not mask the shutdown
+            failures.append(f"{module_name}.{function_name}: {type(exc).__name__}")
+    return failures
 
 
 def _null_controller() -> Any:

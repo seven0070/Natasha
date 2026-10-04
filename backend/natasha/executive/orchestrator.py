@@ -307,6 +307,10 @@ class Executive:
         record["redacted"] = bool(getattr(tool_result, "redacted", False))
         record["artifacts"] = list(getattr(tool_result, "artifacts", []) or [])
 
+        # MEMORY UPDATE: a turn that stores a memory says so, so the console (and a verifier) can
+        # see the write instead of having to trust the model's summary of it.
+        if record["ok"] and isinstance(output, dict) and output.get("memory_id"):
+            result.memory_writes.append(str(output["memory_id"]))
         if not record["ok"] and "approval" in record["error"].lower():
             metadata = getattr(tool_result, "metadata", {}) or {}
             record["approval_request_id"] = metadata.get("approval_request_id", "")
