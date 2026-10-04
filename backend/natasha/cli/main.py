@@ -429,9 +429,14 @@ def cmd_skills(args: argparse.Namespace) -> int:
         _print(lifecycle.approve(args.id, version=args.version, approved_by=CLI_ACTOR).to_dict())
         return 0
     if args.action == "list":
-        for record in lifecycle.list():
-            print(f"{record.skill_id:24s} {record.version:9s} {record.state.value:10s} "
-                  f"{_bounded(record.manifest.description if record.manifest else '', 50)}")
+        records = lifecycle.list()
+        if args.json:
+            _print([record.to_dict() for record in records])
+            return 0
+        for record in records:
+            description = (record.manifest or {}).get("description", "")
+            print(f"{record.id:24s} {record.version:9s} {record.state:10s} "
+                  f"{_bounded(description, 50)}")
         return 0
     if args.action == "install":
         package = args.path or args.id        # `skills install <path>` may land in either slot

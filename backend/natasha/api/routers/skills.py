@@ -44,7 +44,8 @@ async def install_skill(request: Request, path: str, activate: bool = True,
         record = lifecycle.install(path, activate=activate, approved_by=actor)
     except Exception as exc:
         raise handle(exc) from exc
-    audit(get_runtime(request), "skill_installed", {"skill_id": record.skill_id, "path": path},
+    audit(get_runtime(request), "skill_installed",
+          {"skill_id": record.id, "version": record.version, "path": path, "state": record.state},
           risk="HIGH")  # type: ignore[arg-type]
     return record.to_dict()
 
