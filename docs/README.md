@@ -22,6 +22,7 @@ labelled as such.
 | [developer.md](developer.md) | Repository layout, how to add a tool/provider/migration, test conventions |
 | [audit/requirements-matrix.md](audit/requirements-matrix.md) | Requirement-by-requirement status with evidence |
 | [audit/evidence.md](audit/evidence.md) | Commands and results that back the claims above |
+| [audit/validation-report.md](audit/validation-report.md) | The full repository validation pass: 494 tests, architecture, security, API, subsystem walks, defects fixed, unverified capabilities, and the final classification |
 
 Two rules the whole project follows, and which this documentation must not contradict:
 
