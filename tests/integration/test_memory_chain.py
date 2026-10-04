@@ -181,3 +181,19 @@ def test_secrets_are_refused_or_redacted_in_the_store(memory):
     body = json.dumps(stored.to_dict() if hasattr(stored, "to_dict") else stored, default=str)
     # Either the write was refused (raising earlier) or the value is not sitting in plaintext.
     assert secret not in body or "[redacted" in body
+
+
+def test_an_unknown_memory_kind_is_a_client_error_not_a_server_error(owner):
+    """A bad kind is invalid input: 422 with the valid list, never a 500."""
+    response = owner.post("/api/memory", json={"kind": "not-a-kind", "content": "x"})
+    assert response.status_code == 422, response.text
+    detail = response.json()["detail"]
+    assert "known kinds" in detail and "semantic" in detail
+
+    recalled = owner.get("/api/memory/recall?query=x&kinds=not-a-kind")
+    assert recalled.status_code == 422, recalled.text
+    assert "known kinds" in recalled.json()["detail"]
+
+    # The valid path still works, so the fix did not break writing memories.
+    ok = owner.post("/api/memory", json={"kind": "semantic", "content": "validation probe"})
+    assert ok.status_code in (200, 201), ok.text

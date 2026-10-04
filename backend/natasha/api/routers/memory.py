@@ -76,7 +76,13 @@ async def correct_memory(body: CorrectMemoryBody, request: Request,
 async def recall(request: Request, query: str, limit: int = 10, kinds: str = "",
                  actor: str = Depends(require_owner)) -> dict[str, Any]:
     store = _store(request)
-    parsed = [MemoryKind(item) for item in kinds.split(",") if item] if kinds else None
+    try:
+        parsed = [MemoryKind(item.strip().lower()) for item in kinds.split(",") if item.strip()] \
+            if kinds else None
+    except ValueError as exc:
+        known = ", ".join(kind.value for kind in MemoryKind)
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            f"unknown memory kind in {kinds!r}; known kinds: {known}") from exc
     scored = store.recall(query, kinds=parsed, limit=min(limit, 100), actor=actor)
     return {"query": query, "hits": [item.to_dict() for item in scored]}
 

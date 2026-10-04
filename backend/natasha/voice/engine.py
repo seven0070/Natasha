@@ -95,9 +95,15 @@ class VoiceEngine:
 
     # ------------------------------------------------------------------ capabilities
     def capabilities(self) -> dict[str, Any]:
+        try:
+            # "wired" is not "working": report STT as available only when an actual engine is
+            # installed (faster-whisper/vosk) or an audio-capable provider is configured.
+            stt_ready = bool(self.hearing is not None and self.hearing.status().get("ready"))
+        except Exception:
+            stt_ready = False
         return {"backends": sorted(self.backends), "available": bool(self.backends),
                 "out_dir": str(self.out_dir),
-                "speech_to_text": bool(self.hearing is not None),
+                "speech_to_text": stt_ready,
                 "reason": "" if self.backends else
                 "no speech backend found: install espeak-ng (apt install espeak-ng) or piper, "
                 "or configure a TTS endpoint"}

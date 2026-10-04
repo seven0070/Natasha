@@ -111,6 +111,16 @@ def test_hearing_reports_its_engines_and_devices_honestly(rt):
         importlib.util.find_spec("sounddevice") is not None)
 
 
+def test_speech_to_text_is_claimed_only_when_a_real_engine_is_ready(rt):
+    """A wired hearing engine is not a working one: an empty engine must not report STT as ready."""
+    status = rt.hearing.status()
+    capabilities = rt.voice.capabilities()
+    assert capabilities["speech_to_text"] is status["ready"]
+    if not status["ready"]:
+        assert "faster-whisper" in capabilities["reason"] or "configure" in capabilities["reason"] \
+            or "backend" in capabilities["reason"], capabilities
+
+
 def test_voice_activity_detection_finds_the_speech_and_nothing_else(rt):
     audio = _wav(_silence(0.4) + _tone(0.6) + _silence(0.4))
     info = rt.hearing.wav_info(audio)
