@@ -339,12 +339,16 @@ class BrowserController:
                risk: RiskLevel | None = None, approval_id: str = "") -> None:
         if self.policy is None:
             return
-        decision = self.policy.check(PolicyRequest(capability=capability, actor=actor,
-                                                   resource=url, arguments=arguments,
-                                                   risk_hint=risk, approval_id=approval_id))
+        # PolicyRequest carries the arguments inside `context`; passing them as their own keyword
+        # raises TypeError, which made every guarded browser call fail before it started.
+        decision = self.policy.check(PolicyRequest(capability=capability, actor=actor, resource=url,
+                                                   context=dict(arguments), risk_hint=risk))
         if decision.effect.value == "deny":
             raise AccessDenied(f"browse of {url!r} denied: {decision.reason}")
         if decision.effect.value == "approval":
+            if approval_id:
+                # The approval is validated and consumed by the tool registry, not here.
+                return
             request_id = ""
             if self.approvals is not None:
                 try:

@@ -60,10 +60,30 @@ class ImageAnalysis:
 
 
 def _detect_mime(data: bytes) -> str:
+    """The MIME type implied by the file's own bytes, or "" when nothing matches.
+
+    Returning a default here would be a lie with consequences: unidentifiable bytes would be sent to
+    a vision model as "image/png" and the model's answer about nothing would be reported as a
+    description of the file.
+    """
     for signature, mime in _SNIFF.items():
         if data.startswith(signature):
             return mime
-    return "image/png"
+    return ""
+
+
+def _identify(data: bytes) -> str:
+    """Ask Pillow what these bytes are (formats without a magic signature), or ""."""
+    try:
+        from PIL import Image
+
+        with Image.open(io.BytesIO(data)) as probe:
+            probe.verify()
+            fmt = (probe.format or "").lower()
+    except Exception:
+        return ""
+    return {"jpeg": "image/jpeg", "jpg": "image/jpeg", "png": "image/png", "gif": "image/gif",
+            "webp": "image/webp", "bmp": "image/bmp", "tiff": "image/tiff"}.get(fmt, "")
 
 
 def _downscale(data: bytes, mime: str) -> tuple[bytes, int, int, dict[str, Any]]:
@@ -138,8 +158,12 @@ def _header_size(data: bytes, mime: str) -> tuple[int, int]:
 class VisionEngine:
     """Vision analysis with an honest availability story."""
 
-    def __init__(self, *, brain: Any = None) -> None:
+    def __init__(self, *, brain: Any = None, computer: Any = None) -> None:
         self._brain = brain
+        #: Screenshots are *captured* by the computer controller, not by this engine. Reporting a
+        #: hardcoded True here would tell the UI and the model that screenshots work on a machine
+        #: with no desktop backend at all.
+        self.computer = computer
 
     @property
     def brain(self) -> Any:
@@ -174,15 +198,28 @@ class VisionEngine:
             "available": self.available(),
             "models": models,
             "ocr": ocr,
-            "screenshot": True,
+            "screenshot": self.screenshot_available(),
             "camera": self.camera_available(),
             "video": bool(shutil.which("ffmpeg")),
-            "ui_interpretation": True,
+            # Interpreting a UI needs either a vision model (to see) or the accessibility tree (to
+            # name elements). Claiming both are always possible is how a UI ends up offering a
+            # button that can only fail.
+            "ui_interpretation": bool(self.available() or self.accessibility_available()),
             "accessibility_tree": self.accessibility_available(),
             "mime_types": ["image/png", "image/jpeg", "image/webp", "image/gif", "image/bmp"],
             "reason": "" if self.available() else (
                 "no vision-capable model is configured; OCR-only when pytesseract is installed"),
         }
+
+    def screenshot_available(self) -> bool:
+        """True only when a desktop backend can actually capture the screen."""
+        if self.computer is None:
+            return False
+        try:
+            actions = self.computer.capabilities().get("actions", {})
+        except Exception:
+            return False
+        return bool(actions.get("screenshot"))
 
     @staticmethod
     def camera_available() -> bool:
@@ -218,6 +255,15 @@ class VisionEngine:
         else:
             data, source = bytes(image), "inline"
         mime = _detect_mime(data)
+        if not mime:
+            mime = _identify(data)
+        if not mime:
+            # Not an image at all. Sending it to a vision provider would produce a fluent answer
+            # about nothing, which is the exact failure mode this engine must not have.
+            return ImageAnalysis(
+                ok=False, path=source, bytes=len(data), error=(
+                    "not a recognised image format (supported: png, jpeg, webp, gif, bmp)"),
+                metadata={"detected_mime": "", "size": [0, 0]})
         prepared, width, height, info = _downscale(data, mime)
         guard = get_injection_guard()
         result = ImageAnalysis(ok=False, path=source, width=width, height=height, bytes=len(data),

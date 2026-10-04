@@ -341,6 +341,10 @@ class NatashaRuntime:
                                           tools=self.tools)
 
         self.computer = self._attach("computer", build_computer)
+        if self.vision is not None and self.computer is not None:
+            # Vision *analyses* screenshots; the controller *takes* them. Screenshot availability
+            # belongs to the controller, so the two are wired together before anything asks.
+            self.vision.computer = self.computer
 
         def build_browser() -> Any:
             from .computer import get_browser_controller

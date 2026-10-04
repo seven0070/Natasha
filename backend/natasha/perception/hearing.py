@@ -120,6 +120,13 @@ class HearingEngine:
             local = self._transcribe_local(data, language or self.default_language)
             if local.ok:
                 return self._finish(local, source)
+        if not self.provider_audio_available():
+            # A text-only provider cannot transcribe. Asking it anyway returns a confident answer
+            # about audio it never heard, which would be recorded as a transcription.
+            return AudioTranscription(
+                False, path=source,
+                error="no transcription engine available; install faster-whisper (pip install "
+                      "faster-whisper) or configure an audio-capable provider")
         try:
             result = await self._transcribe_provider(data, language or self.default_language, actor, prompt)
         except Exception as exc:

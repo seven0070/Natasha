@@ -367,7 +367,7 @@ class ComputerController:
         with self._lock:
             self.actions.append(action)
             self.actions = self.actions[-500:]
-        self.log.append(EventKind.TOOL, {"action": "computer", **action.to_dict(),
+        self.log.append(EventKind.TOOL_EXECUTION, {"action": "computer", **action.to_dict(),
                                          "capability": capability.value, "resource": resource},
                         actor="owner", source="computer",
                         risk=RiskLevel.HIGH if not action.ok else RiskLevel.MEDIUM)

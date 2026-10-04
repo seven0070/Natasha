@@ -31,13 +31,17 @@ PNG_1x1 = base64.b64encode(
 
 
 # ---------------------------------------------------------------- vision
-def test_vision_capabilities_reports_what_exists(client):
-    payload = client.get("/api/vision/capabilities").json()
+def test_vision_capabilities_reports_what_exists(owner_client):
+    payload = owner_client.get("/api/vision/capabilities").json()
     assert "available" in payload
-    assert payload["screenshot"] is True
     assert "image/png" in payload["mime_types"]
     assert isinstance(payload["models"], list)
     assert "accessibility" in payload and "document_reader" in payload
+    # Screenshots are taken by the computer controller, so the two views must agree. This used to
+    # be hardcoded True, which advertised screenshots on machines with no desktop backend at all.
+    computer = owner_client.get("/api/computer/capabilities").json()
+    assert payload["screenshot"] == bool(computer["computer"]["actions"]["screenshot"]), (
+        "vision's screenshot support must match the controller that actually captures screens")
 
 
 def test_ocr_says_so_when_there_is_no_engine(client):
