@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-import json
 import re
 import shutil
-import sqlite3
 import threading
-from dataclasses import asdict, dataclass, field
-from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -18,64 +14,26 @@ from ..core.paths import get_paths
 from ..core.risk import RiskLevel
 from ..events import EventKind, EventLog, get_event_log
 from .manifest import SkillManifest, compute_skill_checksum, load_manifest, validate_manifest, verify_checksum
+from .models import SkillRecord, SkillState
+from .store import SkillStore
 
-
-class SkillState(str, Enum):
-    DRAFT = "DRAFT"
-    VALIDATED = "VALIDATED"
-    SCANNED = "SCANNED"
-    TESTED = "TESTED"
-    APPROVED = "APPROVED"
-    INSTALLED = "INSTALLED"
-    ACTIVE = "ACTIVE"
-    DISABLED = "DISABLED"
-    UNINSTALLED = "UNINSTALLED"
-    FAILED = "FAILED"
-
-
-#: Patterns that make a skill's source suspicious enough to require explicit owner review.
-SUSPICIOUS_CODE = (
-    ("credential_access", re.compile(r"(?i)(/\.ssh/|\.aws/credentials|id_rsa|keychain|NATASHA_MASTER_KEY|\bvault\b)")),
-    ("env_exfiltration", re.compile(r"(?i)(os\.environ|process\.env)[^\n]{0,40}(requests\.|httpx\.|urllib|fetch\()")),
-    ("eval_exec", re.compile(r"(?<![.\w])(eval|exec)\s*\(")),
-    ("shell_true", re.compile(r"shell\s*=\s*True")),
-    ("obfuscation", re.compile(r"(base64\.b64decode|codecs\.decode)\s*\([^)]{40,}")),
-    ("network_raw", re.compile(r"(?i)(socket\.socket|subprocess\.|pty\.spawn)")),
-    ("secret_read", re.compile(r"(?i)(open|read)\s*\([^)]*(secret|token|credential|password)")),
-)
-
-
-@dataclass
-class SkillRecord:
-    id: str
-    version: str
-    name: str
-    state: str
-    path: str
-    manifest: dict[str, Any] = field(default_factory=dict)
-    scan: dict[str, Any] = field(default_factory=dict)
-    test: dict[str, Any] = field(default_factory=dict)
-    checksum: str = ""
-    installed_at: str = ""
-    updated_at: str = field(default_factory=iso)
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+#: Which capability an undeclared dangerous pattern implies the skill actually needs.
+PATTERN_CAPABILITIES: dict[str, str] = {
+    "subprocess_shell": "shell.exec",
+    "raw_socket": "net.http",
+    "env_exfil": "net.http",
+    "credential_paths": "credential.use",
+    "eval_exec": "code.exec",
+    "obfuscated_payload": "code.exec",
+}
 
 
 class SkillLifecycle:
     """Registry and state machine for skills."""
 
-    def __init__(self, *, log: EventLog | None = None, db_path: str | Path | None = None) -> None:
-        target = Path(db_path) if db_path else get_paths().ensure().db_path("skills.db")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(target, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
-        self._conn.execute(
-            "CREATE TABLE IF NOT EXISTS skills (id TEXT NOT NULL, version TEXT NOT NULL, payload TEXT NOT NULL,"
-            " state TEXT NOT NULL, installed_at TEXT NOT NULL DEFAULT '', PRIMARY KEY (id, version))"
-        )
-        self._conn.commit()
+    def __init__(self, *, log: EventLog | None = None, db_path: str | Path | None = None,
+                 store: SkillStore | None = None) -> None:
+        self.store = store or SkillStore(db_path)
         self._lock = threading.RLock()
         self.log = log or get_event_log()
         self._observers: list[Any] = []
@@ -99,33 +57,21 @@ class SkillLifecycle:
 
     # -- storage --------------------------------------------------------------- #
     def _save(self, record: SkillRecord) -> SkillRecord:
-        record.updated_at = iso()
+        """Persist a record. The store stamps ``updated_at``."""
         with self._lock:
-            self._conn.execute(
-                "INSERT INTO skills (id, version, payload, state, installed_at) VALUES (?,?,?,?,?)"
-                " ON CONFLICT(id, version) DO UPDATE SET payload=excluded.payload, state=excluded.state,"
-                " installed_at=excluded.installed_at",
-                (record.id, record.version, json.dumps(record.to_dict(), default=str), record.state,
-                 record.installed_at),
-            )
-            self._conn.commit()
-        return record
+            return self.store.save(record)
 
     def get(self, skill_id: str, *, version: str = "") -> SkillRecord:
-        if version:
-            row = self._conn.execute("SELECT payload FROM skills WHERE id=? AND version=?", (skill_id, version)).fetchone()
-        else:
-            row = self._conn.execute(
-                "SELECT payload FROM skills WHERE id=? ORDER BY installed_at DESC LIMIT 1", (skill_id,)
-            ).fetchone()
-        if row is None:
-            raise SkillError(f"skill {skill_id!r} is not registered")
-        return SkillRecord(**json.loads(row["payload"]))
+        with self._lock:
+            return self.store.get(skill_id, version=version)
 
     def list(self, *, state: str = "") -> list[SkillRecord]:
-        clause, params = ("WHERE state = ?", [state]) if state else ("", [])
-        rows = self._conn.execute(f"SELECT payload FROM skills {clause} ORDER BY id", params).fetchall()
-        return [SkillRecord(**json.loads(row["payload"])) for row in rows]
+        with self._lock:
+            return self.store.list(state=state)
+
+    def close(self) -> None:
+        """Close the underlying store (used by the runtime shutdown path and by tests)."""
+        self.store.close()
 
     # -- lifecycle steps ------------------------------------------------------- #
     def validate(self, package_dir: str | Path) -> SkillManifest:
@@ -144,26 +90,15 @@ class SkillLifecycle:
         """Static scan of the package for dangerous patterns (state SCANNED)."""
         record = self.get(skill_id, version=version)
         directory = Path(record.path)
-        findings: list[dict[str, str]] = []
-        for path in sorted(directory.rglob("*")):
-            if not path.is_file() or path.name.endswith((".pyc", ".json", ".md")):
-                continue
-            try:
-                text = path.read_text(encoding="utf-8", errors="ignore")
-            except OSError:
-                continue
-            for name, pattern in SUSPICIOUS_CODE:
-                match = pattern.search(text)
-                if match:
-                    findings.append({"file": str(path.relative_to(directory)), "pattern": name,
-                                     "excerpt": match.group(0)[:100]})
+        # One scanner for the whole system: the same code decides for a local skill and for a
+        # marketplace package, so the two can never disagree.
+        from ..marketplace.package import static_scan
+
+        _clean, findings = static_scan(directory)
         manifest = SkillManifest(**record.manifest)
         declared = set(manifest.permissions)
-        needs = set()
-        if any(f["pattern"] in {"network_raw", "env_exfiltration"} for f in findings):
-            needs.add("net.http")
-        if any(f["pattern"] == "credential_access" for f in findings):
-            needs.add("credential.use")
+        needs = {PATTERN_CAPABILITIES[item["pattern"]] for item in findings
+                 if item["pattern"] in PATTERN_CAPABILITIES}
         missing = needs - declared
         record.scan = {
             "findings": findings,

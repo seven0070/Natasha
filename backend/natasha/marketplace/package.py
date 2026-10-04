@@ -217,23 +217,146 @@ def dependency_scan(package_dir: Path, declared: list[str]) -> tuple[bool, list[
     return (not undeclared), third_party, undeclared
 
 
+#: Attribute chains that are dangerous regardless of how they are called.
+_DANGEROUS_CALLS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("raw_socket", ("socket.socket", "pty.spawn", "socket.create_connection")),
+    ("subprocess_shell", ("subprocess.run", "subprocess.Popen", "subprocess.call",
+                          "subprocess.check_output", "os.system", "os.popen", "os.execv")),
+    ("eval_exec", ("eval", "exec", "compile", "__import__")),
+    ("obfuscated_payload", ("base64.b64decode", "codecs.decode", "marshal.loads", "pickle.loads")),
+)
+_CREDENTIAL_MARKERS = ("/.ssh/", ".aws/credentials", "id_rsa", "NATASHA_MASTER_KEY", ".netrc")
+_NETWORK_MARKERS = ("requests.", "httpx.", "urllib", "urlopen", "socket.", "http.client", "fetch(")
+
+
+def _python_findings(path: Path, relative: str) -> list[dict[str, str]]:
+    """AST-based scan: only real calls, attribute chains and literals count as evidence."""
+    import ast
+
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="ignore"))
+    except SyntaxError:
+        return [{"file": relative, "pattern": "unparseable", "excerpt": "file is not valid Python"}]
+
+    findings: list[dict[str, str]] = []
+    seen: set[str] = set()
+
+    def add(pattern: str, node: ast.AST) -> None:
+        if pattern in seen:
+            return
+        seen.add(pattern)
+        findings.append({"file": relative, "pattern": pattern,
+                         "excerpt": ast.unparse(node)[:120] if hasattr(ast, "unparse") else pattern})
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            name = _call_name(node.func)
+            for pattern, chains in _DANGEROUS_CALLS:
+                if name in chains:
+                    if pattern == "subprocess_shell" and not _uses_shell_true(node):
+                        continue          # a list-argument subprocess call is not a shell injection
+                    if pattern == "obfuscated_payload" and not _has_long_literal(node):
+                        continue          # decoding a short literal is not a payload
+                    add(pattern, node)
+            if name in {"open"} and _mentions(node, _CREDENTIAL_MARKERS):
+                add("credential_paths", node)
+        if isinstance(node, ast.Attribute):
+            chain = _attribute_chain(node)
+            if any(marker.rstrip(".") in chain for marker in (".ssh", "aws", "credentials", "id_rsa")):
+                add("credential_paths", node)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            lowered = node.value.lower()
+            if any(marker.lower() in lowered for marker in _CREDENTIAL_MARKERS):
+                add("credential_paths", node)
+            if any(lowered.startswith(prefix) for prefix in ("http://", "https://")) and "environment" in lowered:
+                add("env_exfil", node)
+
+    # Environment variables sent to the network is a combination, not a single call.
+    uses_env = any(isinstance(node, ast.Attribute) and _attribute_chain(node) in {"os.environ", "process.env"}
+                   or (isinstance(node, ast.Name) and node.id == "environ")
+                   for node in ast.walk(tree))
+    uses_net = any(isinstance(node, ast.Call) and any(marker in _call_name(node.func)
+                                                     for marker in _NETWORK_MARKERS)
+                   for node in ast.walk(tree))
+    if uses_env and uses_net:
+        findings.append({"file": relative, "pattern": "env_exfil",
+                         "excerpt": "environment variables read and network calls made"})
+    return findings
+
+
+def _call_name(func: ast.AST) -> str:
+    import ast
+
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return _attribute_chain(func)
+    return ""
+
+
+def _attribute_chain(node: ast.AST) -> str:
+    import ast
+
+    parts: list[str] = []
+    cursor: ast.AST | None = node
+    while isinstance(cursor, ast.Attribute):
+        parts.append(cursor.attr)
+        cursor = cursor.value
+    if isinstance(cursor, ast.Name):
+        parts.append(cursor.id)
+    return ".".join(reversed(parts))
+
+
+def _uses_shell_true(node: ast.AST) -> bool:
+    import ast
+
+    for keyword in getattr(node, "keywords", []) or []:
+        if (keyword.arg == "shell" and isinstance(keyword.value, ast.Constant)
+                and keyword.value.value is True):
+            return True
+    return False
+
+
+def _has_long_literal(node: ast.AST) -> bool:
+    import ast
+
+    for child in ast.walk(node):
+        if isinstance(child, ast.Constant) and isinstance(child.value, (str, bytes)) and len(child.value) >= 60:
+            return True
+    return False
+
+
+def _mentions(node: ast.AST, markers: tuple[str, ...]) -> bool:
+    import ast
+
+    for child in ast.walk(node):
+        if isinstance(child, ast.Constant) and isinstance(child.value, str):
+            if any(marker.lower() in child.value.lower() for marker in markers):
+                return True
+    return False
+
+
 def static_scan(package_dir: Path) -> tuple[bool, list[dict[str, str]]]:
-    """Scan source for dangerous patterns."""
+    """Scan a package for dangerous code. Python is parsed; other sources fall back to patterns."""
     findings: list[dict[str, str]] = []
     for path in sorted(package_dir.rglob("*")):
-        if not path.is_file() or path.suffix.lower() not in {".py", ".js", ".mjs", ".cjs", ".ts", ".sh"}:
+        if not path.is_file():
+            continue
+        suffix = path.suffix.lower()
+        if suffix not in {".py", ".js", ".mjs", ".cjs", ".ts", ".sh"}:
+            continue
+        relative = str(path.relative_to(package_dir))
+        if suffix == ".py":
+            findings.extend(_python_findings(path, relative))
             continue
         try:
             text = path.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
         for name, pattern in DANGEROUS_PATTERNS:
-            for match in pattern.finditer(text):
-                findings.append(
-                    {"file": str(path.relative_to(package_dir)), "pattern": name,
-                     "excerpt": match.group(0)[:120]}
-                )
-                break
+            match = pattern.search(text)
+            if match:
+                findings.append({"file": relative, "pattern": name, "excerpt": match.group(0)[:120]})
     return (not findings), findings
 
 

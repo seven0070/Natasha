@@ -392,18 +392,53 @@ def cmd_credentials(args: argparse.Namespace) -> int:
     return 2
 
 
+def _manifest_id(package_dir: str) -> str:
+    """Read the id from a package's manifest (used by `skills scan <path>`)."""
+    from ..skills import load_manifest
+
+    return load_manifest(package_dir).id
+
+
 def cmd_skills(args: argparse.Namespace) -> int:
     import asyncio
 
     runtime = _runtime()
     lifecycle = runtime.skills
+    if args.action == "validate":
+        target = args.path or args.id
+        if not target:
+            print("a package path is required", file=sys.stderr)
+            return 2
+        manifest = lifecycle.validate(target)
+        _print(manifest.to_dict())
+        return 0
+    if args.action == "scan":
+        skill_id = args.id
+        if args.path:
+            lifecycle.validate(args.path)          # a scan needs a validated manifest to key on
+            skill_id = skill_id or _manifest_id(args.path)
+        if not skill_id:
+            print("a skill id (or a package path) is required", file=sys.stderr)
+            return 2
+        _print(lifecycle.scan(skill_id, version=args.version))
+        return 0
+    if args.action == "rollback":
+        _print(lifecycle.rollback(args.id, to_version=args.version).to_dict())
+        return 0
+    if args.action == "approve":
+        _print(lifecycle.approve(args.id, version=args.version, approved_by=CLI_ACTOR).to_dict())
+        return 0
     if args.action == "list":
         for record in lifecycle.list():
             print(f"{record.skill_id:24s} {record.version:9s} {record.state.value:10s} "
                   f"{_bounded(record.manifest.description if record.manifest else '', 50)}")
         return 0
     if args.action == "install":
-        record = lifecycle.install(args.path, activate=not args.no_activate, approved_by=CLI_ACTOR)
+        package = args.path or args.id        # `skills install <path>` may land in either slot
+        if not package:
+            print("a package path is required", file=sys.stderr)
+            return 2
+        record = lifecycle.install(package, activate=not args.no_activate, approved_by=CLI_ACTOR)
         _print(record.to_dict())
         return 0
     if args.action == "test":
@@ -844,12 +879,15 @@ def build_parser() -> argparse.ArgumentParser:
     credentials.set_defaults(func=cmd_credentials)
 
     skills = sub.add_parser("skills", help="skill lifecycle")
-    skills.add_argument("action", choices=["list", "install", "test", "run", "enable", "disable", "uninstall"])
+    skills.add_argument("action", choices=["list", "validate", "scan", "install", "test", "approve",
+                                           "run", "enable", "disable", "rollback", "uninstall"])
     skills.add_argument("id", nargs="?", default="")
     skills.add_argument("path", nargs="?", default="")
     skills.add_argument("--payload")
     skills.add_argument("--no-activate", action="store_true")
     skills.add_argument("--purge", action="store_true")
+    skills.add_argument("--version", default="", help="version for rollback")
+    skills.add_argument("--note", default="", help="note for an approval decision")
     skills.set_defaults(func=cmd_skills)
 
     marketplace = sub.add_parser("marketplace", help="skill/plugin marketplace")

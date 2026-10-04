@@ -71,12 +71,26 @@ class BrainClient:
             local_privacy_boost=float(getattr(getattr(settings, "brain", settings), "local_privacy_boost", 0.35)),
             context_window_floor=int(getattr(getattr(settings, "brain", settings), "context_window_floor", 8192)),
         )
+        self.settings = settings
         self.usage = usage or get_usage_tracker()
         self.policy = policy or PolicyEngine()
         self.log = log or get_event_log()
         self.sanitizer = get_sanitizer()
 
     # -- helpers --------------------------------------------------------------- #
+    def _fallback_depth(self) -> int:
+        """How many models the fallback ladder may try, read live so a settings change applies.
+
+        ``brain.fallback_depth = 1`` means "one attempt, no fallback"; the value is clamped to a sane
+        range because a chain of 50 providers is not a feature.
+        """
+        brain = getattr(self.settings, "brain", self.settings)
+        try:
+            depth = int(getattr(brain, "fallback_depth", 3))
+        except (TypeError, ValueError):
+            depth = 3
+        return max(1, min(depth, 10))
+
     def _scrub(self, messages: list[ChatMessage]) -> list[ChatMessage]:
         """Never send a secret, and never let external text masquerade as a system instruction."""
         cleaned: list[ChatMessage] = []
@@ -116,7 +130,8 @@ class BrainClient:
         )
         decision = self.router.choose(profile)
         self._policy_gate(request, decision)
-        chain = self.router.build_fallback_chain(decision, profile) if request.allow_fallback else [decision.model]
+        chain = (self.router.build_fallback_chain(decision, profile, depth=self._fallback_depth())
+                 if request.allow_fallback else [decision.model])
 
         errors: list[str] = []
         for index, model in enumerate(chain):
@@ -160,7 +175,8 @@ class BrainClient:
         )
         decision = self.router.choose(profile)
         self._policy_gate(request, decision)
-        chain = self.router.build_fallback_chain(decision, profile) if request.allow_fallback else [decision.model]
+        chain = (self.router.build_fallback_chain(decision, profile, depth=self._fallback_depth())
+                 if request.allow_fallback else [decision.model])
 
         errors: list[str] = []
         for index, model in enumerate(chain):

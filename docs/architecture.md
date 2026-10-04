@@ -28,6 +28,43 @@ is a component: it proposes, the code decides.
   substrate    core (paths, config, ids, clock, errors) · db (schema, migrations)
 ```
 
+### The layer rules are enforced, not aspirational
+
+Every module is assigned to exactly one layer by `backend/natasha/architecture.py` (longest prefix
+wins). The rules are directional and **denied by default**: a pair that is not in the table is
+refused, so a new dependency has to be declared deliberately.
+
+| layer | what it is | may import |
+| --- | --- | --- |
+| `presentation` | REST/WS API, web console, CLI | presentation, business, ports, core |
+| `business` | executive loop, cognition, missions, agents, verification, memory rules, routing | business, ports, core |
+| `ports` | interfaces and shared domain types (`natasha.tools.base`, the skill vocabulary, memory entities) | ports, core |
+| `data` | stores, repositories, migrations, the vault | data, ports, core |
+| `infrastructure` | provider adapters, MCP transport, browser/OS control, speech, observability | infrastructure, ports, data, core |
+| `core` | config, events/audit, security policy, credentials broker, approvals, governance | core, data, ports |
+| `composition` | `natasha.runtime`, process entry points (`apps/`) | everything |
+| `scripts` / `tests` | build tooling and the suite | everything (deliberately) |
+
+Two extra rules are checked by module root, not by layer: business code may never import a web
+framework, a database driver, a browser/OS-control library or a provider SDK
+(`BUSINESS_FORBIDDEN_MODULES`), and the API may never open a database or a provider SDK
+(`PRESENTATION_FORBIDDEN_MODULES`).
+
+Run the checker with
+
+```bash
+python3 scripts/architecture_map.py            # layer matrix + every exception, human readable
+python3 scripts/architecture_map.py --json     # machine readable (used by the audit report)
+python3 scripts/check_architecture.py          # CI gate: exit 1 on an undeclared violation
+python3 -m pytest tests/architecture -q        # the same rules, enforced in the suite
+```
+
+The measurement is honest about the debt that is left: the handful of edges that still break a rule
+are listed in `MODULE_EXCEPTIONS` with the reason and the planned fix, and the test suite fails if one
+of those entries goes stale (matches no import) or if the debt grows past 10% of the graph. Only
+`scripts/check_architecture.py --strict`, which also fails on the declared exceptions, is green once
+the ports refactor in `ARCHITECTURE_REFACTOR_REPORT.md` lands.
+
 ## Authority boundary
 
 Three rules are enforced in code, not in prompts:

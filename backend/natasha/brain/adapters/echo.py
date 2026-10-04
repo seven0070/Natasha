@@ -59,6 +59,6 @@ class EchoAdapter(ProviderAdapter):
                           input_tokens=response.input_tokens, output_tokens=response.output_tokens)
 
     async def embed(self, texts: Iterable[str], *, model: str = "") -> list[list[float]]:
-        from .... import memory as _memory  # local import keeps the adapter dependency-light
+        from ... import memory as _memory  # local import keeps the adapter dependency-light
 
         return [list(_memory.HashingEmbedder().embed(text)) for text in texts]

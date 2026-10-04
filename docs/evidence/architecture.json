@@ -1,0 +1,735 @@
+{
+  "layers": {
+    "presentation": "API, WebSocket, web console, CLI",
+    "business": "executive loop, cognition, missions, agents, verification, memory rules",
+    "ports": "interfaces and shared domain types business code depends on",
+    "data": "stores, repositories, migrations, the vault",
+    "infrastructure": "provider/OS/audio adapters and other concrete external systems",
+    "core": "config, events, security, credentials, approvals, governance (the authority layer)",
+    "composition": "runtime wiring and process entry points",
+    "scripts": "repository build/audit tooling",
+    "tests": "the test suite"
+  },
+  "rules": {
+    "core->data": true,
+    "composition->composition": true,
+    "composition->presentation": true,
+    "composition->business": true,
+    "composition->ports": true,
+    "composition->data": true,
+    "composition->infrastructure": true,
+    "composition->core": true,
+    "presentation->presentation": true,
+    "presentation->business": true,
+    "presentation->ports": true,
+    "presentation->core": true,
+    "presentation->data": false,
+    "presentation->infrastructure": false,
+    "business->business": true,
+    "business->ports": true,
+    "business->core": true,
+    "business->data": false,
+    "business->infrastructure": false,
+    "ports->ports": true,
+    "ports->core": true,
+    "ports->business": false,
+    "ports->data": false,
+    "ports->infrastructure": false,
+    "ports->presentation": false,
+    "data->data": true,
+    "data->core": true,
+    "data->ports": true,
+    "data->business": false,
+    "data->infrastructure": false,
+    "data->presentation": false,
+    "infrastructure->infrastructure": true,
+    "infrastructure->ports": true,
+    "infrastructure->core": true,
+    "infrastructure->data": true,
+    "infrastructure->business": false,
+    "infrastructure->presentation": false,
+    "core->core": true,
+    "scripts->scripts": true,
+    "scripts->core": true,
+    "scripts->data": true,
+    "scripts->business": true,
+    "scripts->ports": true,
+    "scripts->infrastructure": true,
+    "scripts->presentation": true,
+    "scripts->composition": true,
+    "composition->scripts": false,
+    "composition->tests": false,
+    "tests->tests": true,
+    "tests->presentation": true,
+    "tests->business": true,
+    "tests->ports": true,
+    "tests->data": true,
+    "tests->infrastructure": true,
+    "tests->core": true,
+    "tests->composition": true,
+    "tests->scripts": true,
+    "core->ports": true,
+    "core->business": false,
+    "core->infrastructure": false,
+    "core->presentation": false
+  },
+  "files": {
+    "natasha": "core",
+    "natasha.affect": "business",
+    "natasha.affect.engine": "data",
+    "natasha.affect.state": "data",
+    "natasha.agents": "business",
+    "natasha.agents.roles": "business",
+    "natasha.agents.team": "business",
+    "natasha.agents.workers": "business",
+    "natasha.api": "presentation",
+    "natasha.api.app": "presentation",
+    "natasha.api.auth": "data",
+    "natasha.api.deps": "presentation",
+    "natasha.api.models": "presentation",
+    "natasha.api.ratelimit": "presentation",
+    "natasha.api.routers": "presentation",
+    "natasha.api.routers.activity": "presentation",
+    "natasha.api.routers.agents": "presentation",
+    "natasha.api.routers.approvals": "presentation",
+    "natasha.api.routers.artifacts": "presentation",
+    "natasha.api.routers.auth": "presentation",
+    "natasha.api.routers.chat": "presentation",
+    "natasha.api.routers.computer": "presentation",
+    "natasha.api.routers.creation": "presentation",
+    "natasha.api.routers.governance": "presentation",
+    "natasha.api.routers.integrations": "presentation",
+    "natasha.api.routers.marketplace": "presentation",
+    "natasha.api.routers.mcp": "presentation",
+    "natasha.api.routers.memory": "presentation",
+    "natasha.api.routers.missions": "presentation",
+    "natasha.api.routers.observability": "presentation",
+    "natasha.api.routers.providers": "presentation",
+    "natasha.api.routers.security": "presentation",
+    "natasha.api.routers.settings": "presentation",
+    "natasha.api.routers.skills": "presentation",
+    "natasha.api.routers.system": "presentation",
+    "natasha.api.routers.tools": "presentation",
+    "natasha.api.routers.vision": "presentation",
+    "natasha.api.routers.voice": "presentation",
+    "natasha.approvals": "core",
+    "natasha.approvals.engine": "data",
+    "natasha.approvals.models": "core",
+    "natasha.architecture": "core",
+    "natasha.brain": "business",
+    "natasha.brain.adapters": "infrastructure",
+    "natasha.brain.adapters.anthropic": "infrastructure",
+    "natasha.brain.adapters.base": "ports",
+    "natasha.brain.adapters.echo": "infrastructure",
+    "natasha.brain.adapters.gemini": "infrastructure",
+    "natasha.brain.adapters.ollama": "infrastructure",
+    "natasha.brain.adapters.openai_compatible": "infrastructure",
+    "natasha.brain.client": "business",
+    "natasha.brain.models": "business",
+    "natasha.brain.registry": "business",
+    "natasha.brain.router": "business",
+    "natasha.brain.usage": "business",
+    "natasha.cli": "presentation",
+    "natasha.cli.main": "presentation",
+    "natasha.computer": "infrastructure",
+    "natasha.computer.accessibility": "infrastructure",
+    "natasha.computer.browser": "infrastructure",
+    "natasha.computer.controller": "infrastructure",
+    "natasha.computer.tools": "infrastructure",
+    "natasha.core": "core",
+    "natasha.core.async_utils": "core",
+    "natasha.core.clock": "core",
+    "natasha.core.config": "core",
+    "natasha.core.errors": "core",
+    "natasha.core.hashing": "core",
+    "natasha.core.ids": "core",
+    "natasha.core.paths": "core",
+    "natasha.core.results": "core",
+    "natasha.core.risk": "core",
+    "natasha.creation": "business",
+    "natasha.creation.engine": "business",
+    "natasha.creation.video": "business",
+    "natasha.credentials": "core",
+    "natasha.credentials.broker": "core",
+    "natasha.credentials.crypto": "core",
+    "natasha.credentials.manager": "data",
+    "natasha.credentials.oauth": "core",
+    "natasha.credentials.vault": "data",
+    "natasha.db": "data",
+    "natasha.db.migrations": "data",
+    "natasha.db.schema": "data",
+    "natasha.events": "core",
+    "natasha.events.bus": "core",
+    "natasha.events.log": "core",
+    "natasha.events.models": "core",
+    "natasha.events.sanitizer": "core",
+    "natasha.executive": "business",
+    "natasha.executive.context": "business",
+    "natasha.executive.orchestrator": "business",
+    "natasha.governance": "core",
+    "natasha.governance.constitution": "data",
+    "natasha.governance.identity": "core",
+    "natasha.governance.rollback": "core",
+    "natasha.governance.upgrade_governor": "data",
+    "natasha.integrations": "infrastructure",
+    "natasha.integrations.base": "infrastructure",
+    "natasha.integrations.connectors": "infrastructure",
+    "natasha.marketplace": "business",
+    "natasha.marketplace.installer": "business",
+    "natasha.marketplace.package": "infrastructure",
+    "natasha.marketplace.registry": "data",
+    "natasha.mcp": "infrastructure",
+    "natasha.mcp.client": "infrastructure",
+    "natasha.mcp.registry": "data",
+    "natasha.memory": "business",
+    "natasha.memory.embeddings": "ports",
+    "natasha.memory.manager": "business",
+    "natasha.memory.models": "ports",
+    "natasha.memory.retrieval": "data",
+    "natasha.memory.store": "data",
+    "natasha.memory.working": "business",
+    "natasha.missions": "business",
+    "natasha.missions.checks": "business",
+    "natasha.missions.engine": "business",
+    "natasha.missions.models": "ports",
+    "natasha.missions.store": "data",
+    "natasha.missions.supervisor": "business",
+    "natasha.observability": "infrastructure",
+    "natasha.observability.health": "infrastructure",
+    "natasha.observability.metrics": "infrastructure",
+    "natasha.observability.tracing": "infrastructure",
+    "natasha.perception": "infrastructure",
+    "natasha.perception.documents": "infrastructure",
+    "natasha.perception.hearing": "business",
+    "natasha.perception.vision": "business",
+    "natasha.recovery": "business",
+    "natasha.recovery.classifier": "business",
+    "natasha.recovery.recovery": "business",
+    "natasha.runtime": "composition",
+    "natasha.security": "core",
+    "natasha.security.audit": "core",
+    "natasha.security.injection": "core",
+    "natasha.security.policy": "core",
+    "natasha.security.secrets": "core",
+    "natasha.security.validation": "core",
+    "natasha.skills": "business",
+    "natasha.skills.isolation": "infrastructure",
+    "natasha.skills.lifecycle": "business",
+    "natasha.skills.manifest": "ports",
+    "natasha.skills.models": "ports",
+    "natasha.skills.runtime": "business",
+    "natasha.skills.store": "data",
+    "natasha.tools": "business",
+    "natasha.tools.base": "ports",
+    "natasha.tools.builtin": "business",
+    "natasha.tools.registry": "business",
+    "natasha.verification": "business",
+    "natasha.verification.checks": "ports",
+    "natasha.verification.engine": "business",
+    "natasha.voice": "infrastructure",
+    "natasha.voice.conversation": "business",
+    "natasha.voice.engine": "infrastructure",
+    "natasha.voice.wakeword": "infrastructure",
+    "natasha.world": "business",
+    "natasha.world.models": "ports",
+    "natasha.world.store": "data",
+    "scripts.architecture_map": "scripts",
+    "scripts.check_architecture": "scripts",
+    "scripts.generate_migrations": "scripts",
+    "scripts.json_to_py": "scripts",
+    "tests.architecture.test_dependency_rules": "tests",
+    "tests.conftest": "tests",
+    "tests.e2e.conftest": "tests",
+    "tests.e2e.test_full_pipeline": "tests",
+    "tests.e2e.test_live_server": "tests",
+    "tests.e2e.test_restart_persistence": "tests",
+    "tests.fixtures.bad_skill.main": "tests",
+    "tests.fixtures.echo_mcp_server": "tests",
+    "tests.fixtures.mcp_echo_server": "tests",
+    "tests.fixtures.sample_skill.main": "tests",
+    "tests.fixtures.skills.needs_network.main": "tests",
+    "tests.fixtures.skills.wordcount.main": "tests",
+    "tests.integration.conftest": "tests",
+    "tests.integration.test_api_chain": "tests",
+    "tests.integration.test_api_surface_chain": "tests",
+    "tests.integration.test_approval_gate_chain": "tests",
+    "tests.integration.test_chat_chain": "tests",
+    "tests.integration.test_mcp_chain": "tests",
+    "tests.integration.test_memory_chain": "tests",
+    "tests.integration.test_mission_chain": "tests",
+    "tests.integration.test_provider_chain": "tests",
+    "tests.integration.test_rate_limits": "tests",
+    "tests.integration.test_recovery_chain": "tests",
+    "tests.integration.test_skills_chain": "tests",
+    "tests.integration.test_verification_chain": "tests",
+    "tests.integration.test_world_chain": "tests",
+    "tests.natasha_testkit": "tests",
+    "tests.security.test_governor": "tests",
+    "tests.security.test_injection_matrix": "tests",
+    "tests.security.test_permissions": "tests",
+    "tests.unit.test_approvals": "tests",
+    "tests.unit.test_brain_fallback": "tests",
+    "tests.unit.test_core": "tests",
+    "tests.unit.test_credentials": "tests",
+    "tests.unit.test_events": "tests",
+    "tests.unit.test_injection": "tests",
+    "tests.unit.test_isolation": "tests",
+    "tests.unit.test_memory_manager": "tests",
+    "tests.unit.test_policy": "tests",
+    "tests.unit.test_provider_toggle": "tests"
+  },
+  "matrix": {
+    "data": {
+      "core": {
+        "ok": 70,
+        "exception": 0,
+        "violation": 0
+      },
+      "infrastructure": {
+        "ok": 0,
+        "exception": 1,
+        "violation": 0
+      },
+      "ports": {
+        "ok": 10,
+        "exception": 0,
+        "violation": 0
+      }
+    },
+    "business": {
+      "core": {
+        "ok": 96,
+        "exception": 0,
+        "violation": 0
+      },
+      "ports": {
+        "ok": 22,
+        "exception": 0,
+        "violation": 0
+      },
+      "infrastructure": {
+        "ok": 0,
+        "exception": 7,
+        "violation": 0
+      },
+      "data": {
+        "ok": 0,
+        "exception": 4,
+        "violation": 0
+      }
+    },
+    "presentation": {
+      "core": {
+        "ok": 28,
+        "exception": 0,
+        "violation": 0
+      },
+      "data": {
+        "ok": 0,
+        "exception": 8,
+        "violation": 0
+      },
+      "composition": {
+        "ok": 0,
+        "exception": 2,
+        "violation": 0
+      },
+      "business": {
+        "ok": 6,
+        "exception": 0,
+        "violation": 0
+      },
+      "ports": {
+        "ok": 5,
+        "exception": 0,
+        "violation": 0
+      },
+      "infrastructure": {
+        "ok": 0,
+        "exception": 7,
+        "violation": 0
+      }
+    },
+    "infrastructure": {
+      "ports": {
+        "ok": 10,
+        "exception": 0,
+        "violation": 0
+      },
+      "core": {
+        "ok": 52,
+        "exception": 0,
+        "violation": 0
+      }
+    },
+    "core": {
+      "data": {
+        "ok": 3,
+        "exception": 0,
+        "violation": 0
+      }
+    },
+    "ports": {
+      "core": {
+        "ok": 15,
+        "exception": 0,
+        "violation": 0
+      },
+      "business": {
+        "ok": 0,
+        "exception": 1,
+        "violation": 0
+      }
+    },
+    "composition": {
+      "core": {
+        "ok": 8,
+        "exception": 0,
+        "violation": 0
+      },
+      "business": {
+        "ok": 19,
+        "exception": 0,
+        "violation": 0
+      },
+      "ports": {
+        "ok": 1,
+        "exception": 0,
+        "violation": 0
+      },
+      "infrastructure": {
+        "ok": 9,
+        "exception": 0,
+        "violation": 0
+      }
+    },
+    "scripts": {
+      "core": {
+        "ok": 2,
+        "exception": 0,
+        "violation": 0
+      },
+      "data": {
+        "ok": 1,
+        "exception": 0,
+        "violation": 0
+      }
+    },
+    "tests": {
+      "core": {
+        "ok": 85,
+        "exception": 0,
+        "violation": 0
+      },
+      "composition": {
+        "ok": 3,
+        "exception": 0,
+        "violation": 0
+      },
+      "presentation": {
+        "ok": 4,
+        "exception": 0,
+        "violation": 0
+      },
+      "business": {
+        "ok": 33,
+        "exception": 0,
+        "violation": 0
+      },
+      "ports": {
+        "ok": 5,
+        "exception": 0,
+        "violation": 0
+      },
+      "infrastructure": {
+        "ok": 3,
+        "exception": 0,
+        "violation": 0
+      },
+      "data": {
+        "ok": 6,
+        "exception": 0,
+        "violation": 0
+      }
+    }
+  },
+  "violations": [],
+  "exceptions": [
+    {
+      "file": "backend/natasha/api/app.py",
+      "line": 18,
+      "from": "natasha.api.app",
+      "to": "natasha.api.auth",
+      "from_layer": "presentation",
+      "to_layer": "data",
+      "reason": "the app builds the auth store for the login middleware; an auth service port is planned"
+    },
+    {
+      "file": "backend/natasha/api/app.py",
+      "line": 47,
+      "from": "natasha.api.app",
+      "to": "natasha.runtime",
+      "from_layer": "presentation",
+      "to_layer": "composition",
+      "reason": "the API entry point builds the composition root in its lifespan"
+    },
+    {
+      "file": "backend/natasha/api/routers/auth.py",
+      "line": 10,
+      "from": "natasha.api.routers.auth",
+      "to": "natasha.api.auth",
+      "from_layer": "presentation",
+      "to_layer": "data",
+      "reason": "the login/logout endpoints are the auth store's HTTP face; an auth service port is planned"
+    },
+    {
+      "file": "backend/natasha/api/routers/governance.py",
+      "line": 34,
+      "from": "natasha.api.routers.governance",
+      "to": "natasha.governance.constitution",
+      "from_layer": "presentation",
+      "to_layer": "data",
+      "reason": "reads constitution state through its store module; the governance service is the planned fix"
+    },
+    {
+      "file": "backend/natasha/api/routers/mcp.py",
+      "line": 32,
+      "from": "natasha.api.routers.mcp",
+      "to": "natasha.mcp.registry",
+      "from_layer": "presentation",
+      "to_layer": "data",
+      "reason": "lists configured MCP servers; an MCP service facade is the planned fix"
+    },
+    {
+      "file": "backend/natasha/api/routers/observability.py",
+      "line": 25,
+      "from": "natasha.api.routers.observability",
+      "to": "natasha.observability",
+      "from_layer": "presentation",
+      "to_layer": "infrastructure",
+      "reason": "the console exposes the observability adapter's metrics/traces"
+    },
+    {
+      "file": "backend/natasha/api/routers/observability.py",
+      "line": 32,
+      "from": "natasha.api.routers.observability",
+      "to": "natasha.observability",
+      "from_layer": "presentation",
+      "to_layer": "infrastructure",
+      "reason": "the console exposes the observability adapter's metrics/traces"
+    },
+    {
+      "file": "backend/natasha/api/routers/system.py",
+      "line": 38,
+      "from": "natasha.api.routers.system",
+      "to": "natasha.observability",
+      "from_layer": "presentation",
+      "to_layer": "infrastructure",
+      "reason": "the doctor endpoint reports adapter health"
+    },
+    {
+      "file": "backend/natasha/api/routers/vision.py",
+      "line": 95,
+      "from": "natasha.api.routers.vision",
+      "to": "natasha.perception",
+      "from_layer": "presentation",
+      "to_layer": "infrastructure",
+      "reason": "vision endpoints drive the perception engines"
+    },
+    {
+      "file": "backend/natasha/api/routers/vision.py",
+      "line": 107,
+      "from": "natasha.api.routers.vision",
+      "to": "natasha.computer",
+      "from_layer": "presentation",
+      "to_layer": "infrastructure",
+      "reason": "vision endpoints drive the perception engines"
+    },
+    {
+      "file": "backend/natasha/api/routers/vision.py",
+      "line": 159,
+      "from": "natasha.api.routers.vision",
+      "to": "natasha.perception",
+      "from_layer": "presentation",
+      "to_layer": "infrastructure",
+      "reason": "vision endpoints drive the perception engines"
+    },
+    {
+      "file": "backend/natasha/api/routers/vision.py",
+      "line": 317,
+      "from": "natasha.api.routers.vision",
+      "to": "natasha.perception",
+      "from_layer": "presentation",
+      "to_layer": "infrastructure",
+      "reason": "vision endpoints drive the perception engines"
+    },
+    {
+      "file": "backend/natasha/brain/registry.py",
+      "line": 13,
+      "from": "natasha.brain.registry",
+      "to": "natasha.brain.adapters",
+      "from_layer": "business",
+      "to_layer": "infrastructure",
+      "reason": "the provider registry instantiates adapters; the adapter factory belongs to the composition root (planned)"
+    },
+    {
+      "file": "backend/natasha/cli/main.py",
+      "line": 32,
+      "from": "natasha.cli.main",
+      "to": "natasha.runtime",
+      "from_layer": "presentation",
+      "to_layer": "composition",
+      "reason": "the CLI is an entry point: it composes a runtime per command"
+    },
+    {
+      "file": "backend/natasha/cli/main.py",
+      "line": 169,
+      "from": "natasha.cli.main",
+      "to": "natasha.api.auth",
+      "from_layer": "presentation",
+      "to_layer": "data",
+      "reason": "CLI commands drive stores directly (migrate, mcp, governance, auth); an application-service layer is the planned fix"
+    },
+    {
+      "file": "backend/natasha/cli/main.py",
+      "line": 502,
+      "from": "natasha.cli.main",
+      "to": "natasha.mcp.registry",
+      "from_layer": "presentation",
+      "to_layer": "data",
+      "reason": "CLI commands drive stores directly (migrate, mcp, governance, auth); an application-service layer is the planned fix"
+    },
+    {
+      "file": "backend/natasha/cli/main.py",
+      "line": 560,
+      "from": "natasha.cli.main",
+      "to": "natasha.governance.constitution",
+      "from_layer": "presentation",
+      "to_layer": "data",
+      "reason": "CLI commands drive stores directly (migrate, mcp, governance, auth); an application-service layer is the planned fix"
+    },
+    {
+      "file": "backend/natasha/cli/main.py",
+      "line": 777,
+      "from": "natasha.cli.main",
+      "to": "natasha.db.migrations",
+      "from_layer": "presentation",
+      "to_layer": "data",
+      "reason": "CLI commands drive stores directly (migrate, mcp, governance, auth); an application-service layer is the planned fix"
+    },
+    {
+      "file": "backend/natasha/marketplace/installer.py",
+      "line": 15,
+      "from": "natasha.marketplace.installer",
+      "to": "natasha.marketplace.package",
+      "from_layer": "business",
+      "to_layer": "infrastructure",
+      "reason": "the installer orchestrates the package pipeline (download/extract/scan); these steps will be injected as ports"
+    },
+    {
+      "file": "backend/natasha/marketplace/installer.py",
+      "line": 16,
+      "from": "natasha.marketplace.installer",
+      "to": "natasha.marketplace.registry",
+      "from_layer": "business",
+      "to_layer": "data",
+      "reason": "the installer records the install in the marketplace registry; a repository port is planned"
+    },
+    {
+      "file": "backend/natasha/mcp/registry.py",
+      "line": 21,
+      "from": "natasha.mcp.registry",
+      "to": "natasha.mcp.client",
+      "from_layer": "data",
+      "to_layer": "infrastructure",
+      "reason": "the MCP registry opens the client transport for a configured server; the transport will be injected"
+    },
+    {
+      "file": "backend/natasha/memory/embeddings.py",
+      "line": 136,
+      "from": "natasha.memory.embeddings",
+      "to": "natasha.brain",
+      "from_layer": "ports",
+      "to_layer": "business",
+      "reason": "the provider-backed embedder is built by a lazy factory; injecting the brain is the planned fix"
+    },
+    {
+      "file": "backend/natasha/memory/manager.py",
+      "line": 15,
+      "from": "natasha.memory.manager",
+      "to": "natasha.memory.store",
+      "from_layer": "business",
+      "to_layer": "data",
+      "reason": "the memory facade drives its store; a MemoryRepository port is planned"
+    },
+    {
+      "file": "backend/natasha/missions/engine.py",
+      "line": 19,
+      "from": "natasha.missions.engine",
+      "to": "natasha.missions.store",
+      "from_layer": "business",
+      "to_layer": "data",
+      "reason": "the mission engine drives its store; a MissionRepository port is planned"
+    },
+    {
+      "file": "backend/natasha/skills/lifecycle.py",
+      "line": 18,
+      "from": "natasha.skills.lifecycle",
+      "to": "natasha.skills.store",
+      "from_layer": "business",
+      "to_layer": "data",
+      "reason": "the lifecycle drives the skills store; a SkillRepository port is planned"
+    },
+    {
+      "file": "backend/natasha/skills/lifecycle.py",
+      "line": 95,
+      "from": "natasha.skills.lifecycle",
+      "to": "natasha.marketplace.package",
+      "from_layer": "business",
+      "to_layer": "infrastructure",
+      "reason": "the lifecycle orchestrates the scanner and the sandbox; splitting them behind ports is planned"
+    },
+    {
+      "file": "backend/natasha/skills/lifecycle.py",
+      "line": 126,
+      "from": "natasha.skills.lifecycle",
+      "to": "natasha.skills.isolation",
+      "from_layer": "business",
+      "to_layer": "infrastructure",
+      "reason": "the lifecycle orchestrates the scanner and the sandbox; splitting them behind ports is planned"
+    },
+    {
+      "file": "backend/natasha/skills/lifecycle.py",
+      "line": 275,
+      "from": "natasha.skills.lifecycle",
+      "to": "natasha.marketplace.package",
+      "from_layer": "business",
+      "to_layer": "infrastructure",
+      "reason": "the lifecycle orchestrates the scanner and the sandbox; splitting them behind ports is planned"
+    },
+    {
+      "file": "backend/natasha/skills/runtime.py",
+      "line": 15,
+      "from": "natasha.skills.runtime",
+      "to": "natasha.skills.isolation",
+      "from_layer": "business",
+      "to_layer": "infrastructure",
+      "reason": "the skill runtime runs skills through the sandbox; a SkillSandbox port is planned"
+    },
+    {
+      "file": "backend/natasha/tools/builtin.py",
+      "line": 364,
+      "from": "natasha.tools.builtin",
+      "to": "natasha.perception.documents",
+      "from_layer": "business",
+      "to_layer": "infrastructure",
+      "reason": "the document tool calls the parsers; injecting a DocumentReader port through ToolContext is planned"
+    }
+  ],
+  "counts": {
+    "files": 203,
+    "edges": 660,
+    "violations": 0,
+    "exceptions": 30
+  }
+}

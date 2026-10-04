@@ -86,7 +86,10 @@ async def run_isolated(sandbox: SkillSandbox, payload: dict[str, Any]) -> dict[s
             f"skill exited with code {process.returncode}: {stderr.decode('utf-8', 'replace')[:400]}"
         )
     if not text:
-        return {"ok": True, "output": None, "stderr": stderr.decode("utf-8", "replace")[:2000]}
+        # The process exited cleanly but printed nothing. That is a *successful run with no result*,
+        # and saying so is the difference between "your skill ran" and "your skill did nothing".
+        return {"ok": True, "output": None, "stderr": stderr.decode("utf-8", "replace")[:2000],
+                "note": "the entrypoint printed nothing on stdout; print a JSON object to return a result"}
     # Skills may print logs before the JSON result: take the last JSON object on stdout.
     for candidate in reversed(text.splitlines()):
         candidate = candidate.strip()
