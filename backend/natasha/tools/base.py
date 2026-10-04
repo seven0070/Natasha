@@ -152,7 +152,8 @@ class FunctionTool(Tool):
     def __init__(self, name: str, handler: Handler, *, description: str = "", capability: Capability = Capability.CODE_EXEC,
                  risk: RiskLevel = RiskLevel.MEDIUM, schema: Schema | None = None, requires_approval: bool = False,
                  reversible: bool = True, timeout_seconds: float = 120.0, tags: tuple[str, ...] = (),
-                 resource_field: str = "") -> None:
+                 resource_field: str = "",
+                 resource_resolver: Callable[[dict[str, Any]], str] | None = None) -> None:
         self.name = name
         self._handler = handler
         self.description = description or name
@@ -164,11 +165,15 @@ class FunctionTool(Tool):
         self.timeout_seconds = timeout_seconds
         self.tags = tags
         self._resource_field = resource_field
+        self._resource_resolver = resource_resolver
 
     async def run(self, arguments: dict[str, Any], context: ToolContext) -> ToolResult:
         return await self._handler(arguments, context)
 
     def resource_for(self, arguments: dict[str, Any]) -> str:
+        """The resource this call acts on (used for policy checks and approval fingerprints)."""
+        if self._resource_resolver is not None:
+            return str(self._resource_resolver(arguments) or "")
         if self._resource_field:
             return str(arguments.get(self._resource_field, ""))
         return ""

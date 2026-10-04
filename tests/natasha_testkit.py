@@ -57,6 +57,7 @@ RESETTERS: list[tuple[str, str]] = [
     ("natasha.voice", "reset_voice_engine"),
     ("natasha.voice", "reset_voice_loop"),
     ("natasha.voice.wakeword", "reset_wakeword_detector"),
+    ("natasha.creation", "reset_creation_engine"),
     ("natasha.computer", "reset_computer_controller"),
     ("natasha.computer", "reset_browser_controller"),
 ]

@@ -66,6 +66,21 @@ def owner(client):
     return client
 
 
+def stop_server(process) -> None:
+    """Terminate a serve process and close its output pipe (a leaked pipe shows as a warning)."""
+    if process is None:
+        return
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=15)
+        except subprocess.TimeoutExpired:  # pragma: no cover
+            process.kill()
+            process.wait(timeout=10)
+    if process.stdout is not None and not process.stdout.closed:
+        process.stdout.close()
+
+
 def _free_port() -> int:
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
@@ -107,10 +122,10 @@ def live_server(tmp_path):
     else:  # pragma: no cover - only on a broken environment
         process.terminate()
         raise RuntimeError("natasha serve did not become ready in time")
-    yield {"base": base, "home": home, "port": port, "process": process}
-    process.terminate()
+    info = {"base": base, "home": home, "port": port, "process": process}
     try:
-        process.wait(timeout=15)
-    except subprocess.TimeoutExpired:  # pragma: no cover
-        process.kill()
-        process.wait(timeout=10)
+        yield info
+    finally:
+        # Look the process up again: the restart test replaces ``info["process"]`` with a second
+        # server, and the one that must be stopped is the one still running.
+        stop_server(info["process"])

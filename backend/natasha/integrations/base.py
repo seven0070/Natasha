@@ -24,11 +24,15 @@ class ConnectorAction:
     capability: Capability = Capability.NET_HTTP
     risk: RiskLevel = RiskLevel.MEDIUM
     required_arguments: list[str] = field(default_factory=list)
+    #: Which *argument* identifies the thing being acted on ("repo", "channel", "to"). The policy
+    #: engine and the approval fingerprint use it, so an approval is bound to a target.
+    resource_field: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {"name": self.name, "description": self.description, "method": self.method,
                 "capability": self.capability.value, "risk": self.risk.name,
-                "required_arguments": self.required_arguments}
+                "required_arguments": self.required_arguments,
+                "resource_field": self.resource_field}
 
 
 @dataclass
@@ -66,6 +70,16 @@ class Connector(abc.ABC):
         ``approval_id`` carries the owner's approval for credential use when the calling actor is not
         the owner. Connectors must never silently proceed without the credentials they need.
         """
+
+    def network_host(self, action: str, arguments: dict[str, Any]) -> str:
+        """The host this connector will actually contact for *action*.
+
+        Argument-driven connectors (REST, webhooks) return ``""`` and let the target URL speak for
+        itself. Connectors that talk to a *configured* server (GitHub, Slack, SMTP) must return that
+        server's host: the policy engine checks network access against the host, and a call with no
+        host is denied outright - a connector that stays silent here can never run.
+        """
+        return self.settings.get("base_url", "") or ""
 
     def headers(self, purpose: str, *, approval_id: str = "", actor: str = "model:main") -> dict[str, str]:
         """Auth headers for this connector, obtained from the broker (never stored here).
@@ -150,11 +164,34 @@ class IntegrationRegistry:
                                                   suspicious=result.suspicious)
                     return ToolResult.failure(result.error or "integration call failed", status=result.status)
 
+                def resolver(arguments: dict[str, Any], _connector: str = connector.name,
+                             _action: str = action.name, _field: str = action.resource_field) -> str:
+                    """What this call acts on: the host it will contact, else the named argument.
+
+                    Without this the policy engine sees an empty resource and denies every
+                    argument-driven connector with "cannot determine host" - i.e. the tool is
+                    registered but can never run.
+                    """
+                    target = self.get(_connector)
+                    host = target.network_host(_action, arguments)
+                    if host:
+                        return host
+                    if _field:
+                        value = arguments.get(_field)
+                        if isinstance(value, str):
+                            return value[:400]
+                    return ""
+
                 tools.register(
                     FunctionTool(
                         tool_name, handler, description=f"[{connector.name}] {action.description}",
                         capability=action.capability, risk=action.risk,
                         schema=Schema.object({}, additional=True),
+                        # Risk decides this: a HIGH-risk action always needs explicit owner approval,
+                        # and the spec is what the UI, the CLI and the mission planner read.
+                        requires_approval=action.risk.requires_owner_approval(),
+                        resource_field=action.resource_field,
+                        resource_resolver=resolver,
                         tags=("integration", connector.name),
                     )
                 )

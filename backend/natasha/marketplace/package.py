@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import re
-import shutil
 import tarfile
 import tempfile
 import zipfile
@@ -28,7 +28,7 @@ class PackageSource(str, Enum):
     REGISTRY = "registry"
 
     @classmethod
-    def parse(cls, value: object) -> "PackageSource":
+    def parse(cls, value: object) -> PackageSource:
         text = str(value or "").lower()
         for member in cls:
             if member.value == text:
@@ -285,8 +285,6 @@ def _python_findings(path: Path, relative: str) -> list[dict[str, str]]:
 
 
 def _call_name(func: ast.AST) -> str:
-    import ast
-
     if isinstance(func, ast.Name):
         return func.id
     if isinstance(func, ast.Attribute):
@@ -295,8 +293,6 @@ def _call_name(func: ast.AST) -> str:
 
 
 def _attribute_chain(node: ast.AST) -> str:
-    import ast
-
     parts: list[str] = []
     cursor: ast.AST | None = node
     while isinstance(cursor, ast.Attribute):
@@ -308,8 +304,6 @@ def _attribute_chain(node: ast.AST) -> str:
 
 
 def _uses_shell_true(node: ast.AST) -> bool:
-    import ast
-
     for keyword in getattr(node, "keywords", []) or []:
         if (keyword.arg == "shell" and isinstance(keyword.value, ast.Constant)
                 and keyword.value.value is True):
@@ -318,8 +312,6 @@ def _uses_shell_true(node: ast.AST) -> bool:
 
 
 def _has_long_literal(node: ast.AST) -> bool:
-    import ast
-
     for child in ast.walk(node):
         if isinstance(child, ast.Constant) and isinstance(child.value, (str, bytes)) and len(child.value) >= 60:
             return True
@@ -327,8 +319,6 @@ def _has_long_literal(node: ast.AST) -> bool:
 
 
 def _mentions(node: ast.AST, markers: tuple[str, ...]) -> bool:
-    import ast
-
     for child in ast.walk(node):
         if isinstance(child, ast.Constant) and isinstance(child.value, str):
             if any(marker.lower() in child.value.lower() for marker in markers):

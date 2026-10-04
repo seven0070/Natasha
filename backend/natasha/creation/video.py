@@ -41,6 +41,8 @@ class Storyboard:
     brief: str
     shots: list[StoryboardShot] = field(default_factory=list)
     style: str = ""
+    #: Which planner produced the shots: "model", "template" (deterministic), or "" (unknown).
+    source: str = ""
     fps: int = 24
     resolution: str = "1280x720"
     created_at: str = field(default_factory=iso)
@@ -52,10 +54,15 @@ class Storyboard:
     def to_dict(self) -> dict[str, Any]:
         return {"title": self.title, "brief": self.brief, "style": self.style, "fps": self.fps,
                 "resolution": self.resolution, "duration_seconds": self.duration_seconds,
-                "shots": [shot.to_dict() for shot in self.shots], "created_at": self.created_at}
+                "source": self.source, "shots": [shot.to_dict() for shot in self.shots],
+                "created_at": self.created_at}
 
     def to_markdown(self) -> str:
-        lines = [f"# Storyboard: {self.title}", "", f"**Brief:** {self.brief}", "",
+        lines = [f"# Storyboard: {self.title}", "",
+                 f"**Planner:** {self.source or 'unknown'}"
+                 + (" (deterministic template - no model was available)"
+                    if self.source == "template" else ""),
+                 f"**Brief:** {self.brief}", "",
                  f"**Style:** {self.style or 'unspecified'}  |  **Duration:** {self.duration_seconds}s  |  "
                  f"**Resolution:** {self.resolution} @ {self.fps}fps", ""]
         for shot in self.shots:
@@ -95,6 +102,7 @@ class VideoPipeline:
         board = Storyboard(title=title or brief[:60] or "Untitled", brief=brief, style=style,
                            shots=[])
         generated = await self._ask_model(brief, shots=shots, style=style)
+        board.source = "model" if generated else "template"
         if generated:
             for index, item in enumerate(generated):
                 board.shots.append(StoryboardShot(

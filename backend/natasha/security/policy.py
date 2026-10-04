@@ -475,7 +475,14 @@ class PolicyEngine:
         parsed = urlparse(url if "://" in url else f"https://{url}")
         host = (parsed.hostname or "").lower()
         if not host:
-            return Decision(Effect.DENY, request.capability, risk, f"cannot determine host for {url!r}", resource=url)
+            return Decision(
+                Effect.DENY, request.capability, risk,
+                (f"no host to check for {url!r}: a network operation must name the host it will "
+                 "contact (configure the connector's host, or pass a URL)") if url
+                else "no host to check for a network operation: configure the connector's host "
+                     "or pass a URL",
+                resource=url,
+            )
         if parsed.scheme and parsed.scheme not in {"http", "https", "ws", "wss"}:
             return Decision(Effect.DENY, request.capability, RiskLevel.HIGH,
                             f"scheme {parsed.scheme!r} is not permitted", resource=url)

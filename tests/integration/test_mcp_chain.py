@@ -13,7 +13,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from natasha.events import EventKind
 
 pytestmark = pytest.mark.integration
@@ -47,7 +46,16 @@ def server(registry):
 
 
 def _run(coro):
-    return asyncio.run(coro)
+    """Drive MCP calls on the *shared* background loop.
+
+    MCP sessions own child processes and are bound to the loop that created them. ``asyncio.run``
+    would create a loop per call, so every session would be orphaned (and its transport garbage
+    collected after its loop closed) between one call and the next. The background loop is the same
+    loop the runtime uses for sync callers, so sessions stay usable and, more importantly, closable.
+    """
+    from natasha.core.async_utils import run_coroutine_sync
+
+    return run_coroutine_sync(coro)
 
 
 def test_configure_and_list_servers(registry, server):
@@ -138,8 +146,11 @@ def test_an_unreachable_server_fails_honestly(registry, log):
 
     registry.configure(MCPServer(name="broken", transport="stdio", command=sys.executable,
                                  args=["-c", "import sys; sys.exit(3)"]))
-    with pytest.raises(Exception):
+    from natasha.mcp.client import MCPError
+
+    with pytest.raises((MCPError, TimeoutError)) as excinfo:
         _run(asyncio.wait_for(registry.inspect("broken"), timeout=30))
+    assert "broken" in str(excinfo.value), "the failure must name the server that failed"
     events = log.query(kinds=[EventKind.MCP], limit=50)
     assert any("broken" in json.dumps(event.payload, default=str) for event in events)
 

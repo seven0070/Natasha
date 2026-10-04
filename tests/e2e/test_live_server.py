@@ -134,14 +134,13 @@ def test_the_whole_owner_flow_works_over_http_and_survives_a_restart(live_server
     assert status == 200 and chain["ok"] is True, chain
 
     # ---- restart -----------------------------------------------------------------------------
-    live_server["process"].terminate()
-    assert live_server["process"].wait(timeout=20) is not None
+    from tests.e2e.conftest import REPO_ROOT, stop_server
+
+    stop_server(live_server["process"])
 
     import subprocess
     import sys
     import time
-
-    from tests.e2e.conftest import REPO_ROOT
 
     restarted = subprocess.Popen(
         [sys.executable, "-m", "natasha.cli", "serve", "--host", "127.0.0.1",

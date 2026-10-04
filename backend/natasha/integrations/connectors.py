@@ -24,7 +24,7 @@ class RestConnector(Connector):
         self.base_url = base_url or self.settings.get("base_url", "")
         self.actions = [
             ConnectorAction("request", "Call an HTTP endpoint", method="ANY", capability=Capability.NET_HTTP,
-                            risk=RiskLevel.MEDIUM, required_arguments=["url"])
+                            risk=RiskLevel.MEDIUM, required_arguments=["url"], resource_field="url")
         ]
 
     async def perform(self, action: str, arguments: dict[str, Any], *, approval_id: str = "",
@@ -47,6 +47,13 @@ class RestConnector(Connector):
         return ConnectorResult(response.is_success, data=data, status=response.status_code,
                                error="" if response.is_success else f"HTTP {response.status_code}: {str(data)[:200]}")
 
+    def network_host(self, action: str, arguments: dict[str, Any]) -> str:
+        """Relative URLs resolve against the configured base_url, so report that base's host."""
+        url = str(arguments.get("url", ""))
+        if url.startswith("http"):
+            return url
+        return self.base_url
+
 
 class WebhookConnector(Connector):
     """Outbound webhook posts (Slack-compatible payloads by default)."""
@@ -57,7 +64,8 @@ class WebhookConnector(Connector):
         super().__init__(**kwargs)
         self.actions = [
             ConnectorAction("send", "POST a JSON payload to a webhook URL", method="POST",
-                            capability=Capability.NET_HTTP, risk=RiskLevel.MEDIUM, required_arguments=["url"])
+                            capability=Capability.NET_HTTP, risk=RiskLevel.MEDIUM, required_arguments=["url"],
+                            resource_field="url")
         ]
 
     async def perform(self, action: str, arguments: dict[str, Any], *, approval_id: str = "",
@@ -76,18 +84,23 @@ class GitHubConnector(Connector):
 
     name = "github"
     credential_ref = "credential://github"
+    #: The API this connector always talks to (self-hosted instances set settings.base_url).
+    default_base_url = "https://api.github.com"
+
+    def network_host(self, action: str, arguments: dict[str, Any]) -> str:
+        return str(self.settings.get("base_url") or self.default_base_url)
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.actions = [
             ConnectorAction("list_issues", "List issues in a repository", "GET", "/repos/{repo}/issues",
-                            Capability.NET_HTTP, RiskLevel.LOW, ["repo"]),
+                            Capability.NET_HTTP, RiskLevel.LOW, ["repo"], resource_field="repo"),
             ConnectorAction("create_issue", "Open an issue", "POST", "/repos/{repo}/issues",
-                            Capability.NET_HTTP, RiskLevel.MEDIUM, ["repo", "title"]),
+                            Capability.NET_HTTP, RiskLevel.MEDIUM, ["repo", "title"], resource_field="repo"),
             ConnectorAction("list_pull_requests", "List pull requests", "GET", "/repos/{repo}/pulls",
-                            Capability.NET_HTTP, RiskLevel.LOW, ["repo"]),
+                            Capability.NET_HTTP, RiskLevel.LOW, ["repo"], resource_field="repo"),
             ConnectorAction("get_repo", "Repository metadata", "GET", "/repos/{repo}",
-                            Capability.NET_HTTP, RiskLevel.LOW, ["repo"]),
+                            Capability.NET_HTTP, RiskLevel.LOW, ["repo"], resource_field="repo"),
         ]
 
     async def perform(self, action: str, arguments: dict[str, Any], *, approval_id: str = "",
@@ -126,14 +139,23 @@ class SlackConnector(Connector):
 
     name = "slack"
     credential_ref = "credential://slack"
+    default_base_url = "https://slack.com/api"
+
+    def network_host(self, action: str, arguments: dict[str, Any]) -> str:
+        """A webhook post goes to the webhook host; everything else to the API host."""
+        webhook = str(arguments.get("webhook_url") or self.settings.get("webhook_url", ""))
+        if webhook and action == "post_message":
+            return webhook
+        return str(self.settings.get("base_url") or self.default_base_url)
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.actions = [
             ConnectorAction("post_message", "Post a message to a channel", "POST", "chat.postMessage",
-                            Capability.NET_HTTP, RiskLevel.MEDIUM, ["channel", "text"]),
+                            Capability.NET_HTTP, RiskLevel.MEDIUM, ["channel", "text"],
+                            resource_field="channel"),
             ConnectorAction("list_channels", "List public channels", "GET", "conversations.list",
-                            Capability.NET_HTTP, RiskLevel.LOW, []),
+                            Capability.NET_HTTP, RiskLevel.LOW, [], resource_field="webhook_url"),
         ]
 
     async def perform(self, action: str, arguments: dict[str, Any], *, approval_id: str = "",
@@ -176,6 +198,10 @@ class EmailConnector(Connector):
             ConnectorAction("send", "Send an email", method="SMTP", capability=Capability.NET_SOCKET,
                             risk=RiskLevel.HIGH, required_arguments=["to", "subject", "body"]),
         ]
+
+    def network_host(self, action: str, arguments: dict[str, Any]) -> str:
+        """SMTP sends go to the *configured* mail server, not to the recipient's domain."""
+        return str(self.settings.get("smtp_host", ""))
 
     async def perform(self, action: str, arguments: dict[str, Any], *, approval_id: str = "",
                       actor: str = "model:main") -> ConnectorResult:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import mimetypes
 import threading
 import textwrap
 import time
@@ -15,12 +16,67 @@ from typing import Any
 
 from ..core import NatashaError, new_id
 from ..core.clock import iso
+from ..core.hashing import sha256_file
 from ..core.risk import RiskLevel
 from ..events import EventKind, get_event_log
 from .video import VideoPipeline
 
 #: What the engine can be asked to make.
 KINDS = ("document", "image", "audio", "video", "slides")
+
+#: Leading bytes that identify a format. Anything declared as one of these kinds is checked against
+#: them, so a truncated or mislabelled file is reported instead of being called a success.
+_MAGIC: dict[str, tuple[bytes, ...]] = {
+    "image": (b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"GIF87a", b"GIF89a", b"<svg", b"<?xml"),
+    "audio": (b"RIFF", b"ID3", b"\xff\xfb", b"\xff\xf3", b"OggS", b"fLaC", b"#!AMR"),
+    "video": (b"\x1a\x45\xdf\xa3",),  # Matroska/WebM; MP4 is recognised by "ftyp" at offset 4.
+}
+
+
+def _looks_like(data: bytes, kind: str) -> bool:
+    """True when the first bytes of the file are consistent with the declared kind."""
+    if kind == "video":
+        return data.startswith(_MAGIC["video"]) or data[4:8] == b"ftyp"
+    prefixes = _MAGIC.get(kind)
+    if prefixes is None:  # documents, slides, storyboards, narration scripts - text or JSON
+        return True
+    if kind == "image" and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return True
+    return any(data.startswith(prefix) for prefix in prefixes)
+
+
+def verify_artifact(path: str | Path, kind: str = "") -> dict[str, Any]:
+    """Read an artifact back off disk and report what is actually there.
+
+    The hash is the file's, not the producer's claim: a creation job that writes nothing, writes a
+    different format than it announced, or whose output is truncated is reported as such.
+    """
+    target = Path(path)
+    checked_at = iso()
+    base = {"checked_at": checked_at, "path": str(target), "kind": kind}
+    if not target.is_file():
+        return {**base, "status": "missing", "method": "exists + sha256 on disk",
+                "detail": "the file does not exist"}
+    size = target.stat().st_size
+    if size == 0:
+        return {**base, "status": "empty", "method": "exists + sha256 on disk",
+                "detail": "the file exists but is empty", "bytes": 0}
+    with target.open("rb") as handle:
+        head = handle.read(16)
+    if not _looks_like(head, kind):
+        return {**base, "status": "format-mismatch", "method": "format signature + sha256 on disk",
+                "detail": f"declared {kind or 'file'} but the file starts with {head[:8]!r}",
+                "bytes": size, "sha256": sha256_file(target)}
+    if kind in ("document", "slides", "storyboard", "text"):
+        try:
+            target.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            return {**base, "status": "unreadable", "method": "utf-8 decode + sha256 on disk",
+                    "detail": f"declared text but the bytes are not valid UTF-8: {exc}",
+                    "bytes": size, "sha256": sha256_file(target)}
+    return {**base, "status": "verified", "method": "exists + format signature + sha256 on disk",
+            "detail": f"{size} bytes read back from disk", "bytes": size,
+            "sha256": sha256_file(target)}
 
 
 class CreationStage(str, Enum):
@@ -52,10 +108,48 @@ class CreationJob:
     def stage(self, name: str, state: CreationStage, detail: str = "") -> None:
         self.stages.append({"stage": name, "state": state.value, "detail": detail[:300], "at": iso()})
 
-    def artifact(self, path: str, *, kind: str = "", note: str = "", bytes_: int = 0) -> dict[str, Any]:
-        record = {"path": path, "kind": kind or self.kind, "note": note, "bytes": bytes_}
+    def artifact(self, path: str, *, kind: str = "", note: str = "", bytes_: int = 0,
+                 produced_by: str = "") -> dict[str, Any]:
+        """Record an artifact with everything needed to audit it later.
+
+        id, type, MIME, size, sha256, provenance (which job and which generator produced it, and
+        whether a model was involved) and a verification block that was computed by reading the
+        file back - not by trusting the code that wrote it.
+        """
+        resolved = kind or self.kind
+        target = Path(path)
+        verification = verify_artifact(target, resolved)
+        mime, _ = mimetypes.guess_type(target.name)
+        record: dict[str, Any] = {
+            "id": new_id("art"),
+            "path": str(path),
+            "name": target.name,
+            "kind": resolved,
+            "mime": mime or "application/octet-stream",
+            "bytes": bytes_ or int(verification.get("bytes") or 0),
+            "note": note,
+            "sha256": verification.get("sha256", ""),
+            "created_at": iso(),
+            "provenance": {
+                "job_id": self.id,
+                "job_kind": self.kind,
+                "brief": self.brief[:200],
+                "produced_by": produced_by or note or "creation engine",
+                # Only a generator that names itself "model:..." counts as model-generated. A local
+                # composition or a template skeleton is never described as an AI output.
+                "model_generated": (produced_by or "").startswith("model"),
+                "actor": "owner",
+            },
+            "verification": verification,
+        }
         self.artifacts.append(record)
         return record
+
+    @property
+    def unverified(self) -> list[dict[str, Any]]:
+        """Artifacts whose bytes on disk do not match what the job says it produced."""
+        return [item for item in self.artifacts
+                if (item.get("verification") or {}).get("status") != "verified"]
 
     def to_dict(self) -> dict[str, Any]:
         return {"id": self.id, "kind": self.kind, "brief": self.brief, "status": self.status,
@@ -140,6 +234,20 @@ class CreationEngine:
         finally:
             job.duration_ms = (time.perf_counter() - started) * 1000
             job.finished_at = iso()
+        broken = job.unverified
+        if broken:
+            detail = "; ".join(f"{Path(item['path']).name}: "
+                               f"{(item.get('verification') or {}).get('status')}" for item in broken)
+            job.notes.append(f"artifact verification failed - {detail}")
+            if job.status in ("succeeded", "pending"):
+                job.status = "failed" if not [item for item in job.artifacts if item not in broken] \
+                    else "partial"
+            if not job.error:
+                job.error = f"artifact verification failed: {detail}"
+            job.stage("verify", CreationStage.FAILED, detail)
+        elif job.artifacts:
+            job.stage("verify", CreationStage.RAN,
+                      f"{len(job.artifacts)} artifact(s) hashed and read back from disk")
         self._audit(job)
         return job
 
@@ -159,6 +267,7 @@ class CreationEngine:
                         filename: str = "", **_: Any) -> None:
         job.stage("plan", CreationStage.RAN, "outline the document")
         text = ""
+        produced_by = "template:skeleton"
         if self.brain is not None:
             try:
                 from ..brain import ChatMessage, CompletionRequest
@@ -171,6 +280,8 @@ class CreationEngine:
                               ChatMessage.user(prompt)],
                     task="write", actor="owner", trace_id=job.id))
                 text = (getattr(response, "text", "") or "").strip()
+                model = getattr(response, "model", "") or getattr(response, "provider", "")
+                produced_by = f"model:{model}" if model else "model"
                 job.stage("draft", CreationStage.RAN, f"model produced {len(text)} chars")
             except Exception as exc:
                 job.stage("draft", CreationStage.FAILED, f"{type(exc).__name__}: {exc}")
@@ -186,7 +297,8 @@ class CreationEngine:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text, encoding="utf-8")
         job.stage("write", CreationStage.RAN, str(target))
-        job.artifact(str(target), kind="document", note="markdown", bytes_=target.stat().st_size)
+        job.artifact(str(target), kind="document", note="markdown", bytes_=target.stat().st_size,
+                     produced_by=produced_by)
         job.status = "succeeded"
 
     # ------------------------------------------------------------------ images
@@ -203,7 +315,9 @@ class CreationEngine:
                 try:
                     await self._image_remote(brief, endpoint, target, size=size)
                     job.stage(f"image[{index}]", CreationStage.RAN, f"image model -> {target}")
-                    job.artifact(str(target), kind="image", note="generated by configured image model")
+                    job.artifact(str(target), kind="image",
+                                 note="generated by the configured image model",
+                                 produced_by=f"model:{self._setting('image_model', 'image-endpoint')}")
                     made += 1
                     continue
                 except Exception as exc:
@@ -214,7 +328,8 @@ class CreationEngine:
                 self._image_local(brief, target, size=size, index=index)
                 job.stage(f"image[{index}]", CreationStage.RAN, f"local composition -> {target}")
                 job.artifact(str(target), kind="image",
-                             note="LOCAL COMPOSITION - not model-generated; no image model configured")
+                             note="LOCAL COMPOSITION - not model-generated; no image model configured",
+                             produced_by="local:pillow")
                 made += 1
             except Exception as exc:
                 job.stage(f"image[{index}]", CreationStage.FAILED, f"{type(exc).__name__}: {exc}")
@@ -294,11 +409,13 @@ class CreationEngine:
         if result.ok:
             job.stage("speak", CreationStage.RAN, f"{result.backend} -> {result.audio_path}")
             job.artifact(result.audio_path, kind="audio", note=f"spoken by {result.backend}",
-                         bytes_=Path(result.audio_path).stat().st_size)
+                         bytes_=Path(result.audio_path).stat().st_size,
+                         produced_by=f"voice:{result.backend}")
             if script != brief:
                 script_path = target.with_suffix(".txt")
                 script_path.write_text(script, encoding="utf-8")
-                job.artifact(str(script_path), kind="text", note="narration script")
+                job.artifact(str(script_path), kind="text", note="narration script",
+                             produced_by="local:script")
             job.status = "succeeded"
         else:
             job.stage("speak", CreationStage.FAILED, result.error)
@@ -316,8 +433,10 @@ class CreationEngine:
         board_path.write_text(json.dumps(board.to_dict(), indent=2), encoding="utf-8")
         markdown_path = board_path.with_suffix(".md")
         markdown_path.write_text(board.to_markdown(), encoding="utf-8")
-        job.artifact(str(board_path), kind="storyboard", note="shot list (JSON)")
-        job.artifact(str(markdown_path), kind="storyboard", note="shot list (markdown)")
+        planner = f"model:{board.source}" if board.source == "model" else f"local:{board.source}"
+        job.artifact(str(board_path), kind="storyboard", note="shot list (JSON)", produced_by=planner)
+        job.artifact(str(markdown_path), kind="storyboard", note="shot list (markdown)",
+                     produced_by=planner)
         job.stage("storyboard", CreationStage.RAN, f"{len(board.shots)} shots, {board.duration_seconds}s")
 
         if images:
@@ -342,12 +461,14 @@ class CreationEngine:
                           f"{len(made)} local frames (no image model configured)")
                 job.notes.append("Frames are labelled local compositions, not model-generated images.")
                 for frame in made:
-                    job.artifact(frame, kind="image", note="LOCAL COMPOSITION frame")
+                    job.artifact(frame, kind="image", note="LOCAL COMPOSITION frame",
+                                 produced_by="local:pillow")
 
         narration = self.video_pipeline.narrate(board)
         if narration.get("ok"):
             job.stage("narration", CreationStage.RAN, narration["audio"])
-            job.artifact(narration["audio"], kind="audio", note="narration")
+            job.artifact(narration["audio"], kind="audio", note="narration",
+                         produced_by=f"voice:{narration.get('backend', 'unknown')}")
         else:
             job.stage("narration", CreationStage.SKIPPED, narration.get("error", "no narration"))
 
@@ -355,11 +476,11 @@ class CreationEngine:
             job.stage("render", CreationStage.SKIPPED, "render=False")
             job.status = "partial"
         else:
-            outcome = self.video_pipeline.render(board)
+            outcome = self.video_pipeline.render(board, audio=narration.get("audio", ""))
             if outcome.get("ok"):
                 job.stage("render", CreationStage.RAN, outcome["video"])
                 job.artifact(outcome["video"], kind="video", note="rendered with ffmpeg",
-                             bytes_=outcome.get("bytes", 0))
+                             bytes_=outcome.get("bytes", 0), produced_by="local:ffmpeg")
                 job.status = "succeeded" if not job.notes else "partial"
             else:
                 job.stage("render", CreationStage.SKIPPED, outcome.get("error", "render failed"))
@@ -370,6 +491,7 @@ class CreationEngine:
     async def _slides(self, job: CreationJob, brief: str, *, slides: int = 6, title: str = "",
                       **_: Any) -> None:
         outline: list[str] = []
+        produced_by = "template:outline"
         if self.brain is not None:
             try:
                 from ..brain import ChatMessage, CompletionRequest
@@ -385,6 +507,8 @@ class CreationEngine:
                     parsed = json.loads(match.group(0))
                     outline = [json.dumps(item, default=str) if not isinstance(item, str) else item
                                for item in parsed][:slides]
+                    outline_model = getattr(response, "model", "") or getattr(response, "provider", "")
+                    produced_by = f"model:{outline_model}" if outline_model else "model"
             except Exception as exc:
                 job.stage("outline", CreationStage.FAILED, f"{type(exc).__name__}: {exc}")
         if not outline:
@@ -397,7 +521,8 @@ class CreationEngine:
             body += [f"## Slide {index}", "", f"{item}", ""]
         target.write_text("\n".join(body), encoding="utf-8")
         job.stage("write", CreationStage.RAN, str(target))
-        job.artifact(str(target), kind="slides", note="markdown deck", bytes_=target.stat().st_size)
+        job.artifact(str(target), kind="slides", note="markdown deck", bytes_=target.stat().st_size,
+                     produced_by=produced_by)
         job.status = "succeeded"
 
     # ------------------------------------------------------------------ read

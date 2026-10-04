@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from ..core import ToolError
+from ..core.process import terminate
 from ..core.clock import iso
 from ..core.risk import RiskLevel
 from ..security.injection import ContentTrust, ExternalContent
@@ -228,7 +229,10 @@ class ShellTool(Tool):
             )
             stdout, stderr = await asyncio.wait_for(completed.communicate(), timeout=timeout)
         except asyncio.TimeoutError:
-            return ToolResult.failure(f"command timed out after {timeout}s")
+            # "timed out" must mean the command is no longer running: a cancelled communicate()
+            # leaves the child alive, so it has to be stopped and reaped explicitly.
+            await terminate(completed)
+            return ToolResult.failure(f"command timed out after {timeout}s (process stopped)")
         except FileNotFoundError:
             return ToolResult.failure(f"command not found: {parts[0]}")
         out = stdout.decode("utf-8", "replace")
@@ -283,7 +287,8 @@ class PythonExecTool(Tool):
                     timeout=timeout,
                 )
             except asyncio.TimeoutError:
-                return ToolResult.failure(f"python snippet timed out after {timeout}s")
+                await terminate(completed)
+                return ToolResult.failure(f"python snippet timed out after {timeout}s (process stopped)")
         return ToolResult.success({
             "returncode": completed.returncode, "stdout": stdout.decode("utf-8", "replace")[-20000:],
             "stderr": stderr.decode("utf-8", "replace")[-8000:], "ok": completed.returncode == 0,

@@ -178,10 +178,12 @@ class MCPServerRegistry:
             tools = await client.list_tools()
         except Exception as exc:
             server.state = MCPServerState.FAILED
-            server.notes = f"inspect failed: {type(exc).__name__}: {exc}"
+            # Name the configured server, not just its command: "python exited with 3" does not tell
+            # an operator which of their MCP servers is broken.
+            server.notes = f"MCP server {name!r} failed inspection: {type(exc).__name__}: {exc}"
             self._save(server)
             self._event("inspect_failed", name, {"error": server.notes}, actor, RiskLevel.MEDIUM)
-            raise MCPError(server.notes)
+            raise MCPError(server.notes) from exc
         await client.close()
         server.server_info = info.get("server_info", {})
         server.tools = [tool.to_dict() for tool in tools]

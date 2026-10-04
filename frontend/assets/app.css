@@ -161,6 +161,8 @@ label { display: block; font-size: .84rem; color: var(--text-dim); margin: .5rem
              padding: .6rem .75rem; min-width: 0; overflow-wrap: anywhere; }
 .msg--owner { align-self: flex-end; flex-direction: row-reverse; }
 .msg--owner .msg__body { background: var(--accent-soft); border-color: var(--border); }
+.msg--assistant .msg__avatar { background: var(--accent-soft); border-color: var(--border);
+                              color: var(--accent); font-weight: 600; }
 .msg__meta { font-size: .72rem; color: var(--text-faint); margin-top: .3rem; }
 .composer { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-soft); padding: .6rem; }
 .composer__row { display: flex; gap: .5rem; align-items: flex-end; }

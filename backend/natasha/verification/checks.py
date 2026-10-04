@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..core.process import terminate
+
 
 class CheckStatus(str, enum.Enum):
     PASSED = "passed"
@@ -94,8 +96,10 @@ class CommandCheck(VerificationCheck):
         try:
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=self.timeout)
         except asyncio.TimeoutError:
-            process.kill()
-            return CheckResult(self.name, CheckStatus.FAILED, f"timed out after {self.timeout}s")
+            # A killed-but-unreaped child keeps its transport open and may still be running.
+            await terminate(process)
+            return CheckResult(self.name, CheckStatus.FAILED,
+                               f"timed out after {self.timeout}s (process stopped)")
         out, err = stdout.decode("utf-8", "replace"), stderr.decode("utf-8", "replace")
         if process.returncode == 0:
             return CheckResult(self.name, CheckStatus.PASSED, "command succeeded",
@@ -162,7 +166,7 @@ class ImportCheck(VerificationCheck):
         try:
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=60)
         except asyncio.TimeoutError:
-            process.kill()
+            await terminate(process)
             return CheckResult(self.name, CheckStatus.FAILED, "import timed out after 60s")
         out = stdout.decode("utf-8", "replace")
         err = stderr.decode("utf-8", "replace")

@@ -69,6 +69,10 @@ class StdioTransport(MCPTransport):
         self._next_id = 0
         self._pending: dict[int, asyncio.Future[dict[str, Any]]] = {}
         self._reader: asyncio.Task[None] | None = None
+        #: The stderr drain task is kept so it can be cancelled on close. Dropping it leaves a task
+        #: holding the child's pipe open - it outlives the event loop and shows up as an unraisable
+        #: "Event loop is closed" error plus unclosed-transport warnings.
+        self._stderr_task: asyncio.Task[None] | None = None
         self._lock = asyncio.Lock()
         self.stderr_tail: list[str] = []
 
@@ -87,7 +91,7 @@ class StdioTransport(MCPTransport):
         except FileNotFoundError as exc:
             raise MCPError(f"MCP server command not found: {self.command}") from exc
         self._reader = asyncio.create_task(self._read_loop())
-        asyncio.create_task(self._drain_stderr())
+        self._stderr_task = asyncio.create_task(self._drain_stderr())
 
     async def _read_loop(self) -> None:
         assert self._process is not None and self._process.stdout is not None
@@ -186,26 +190,48 @@ class StdioTransport(MCPTransport):
                 except Exception:
                     continue
                 break
+        _close_pipes(process)
 
     async def close(self) -> None:
         reader, self._reader = self._reader, None
+        stderr_task, self._stderr_task = self._stderr_task, None
+        process, self._process = self._process, None
         try:
-            if self._process is not None and self._process.returncode is None:
-                self._process.terminate()
+            if process is not None and process.returncode is None:
+                process.terminate()
                 try:
-                    await asyncio.wait_for(self._process.wait(), timeout=5)
+                    await asyncio.wait_for(process.wait(), timeout=5)
                 except asyncio.TimeoutError:
-                    self._process.kill()
-                    await asyncio.wait_for(self._process.wait(), timeout=5)
+                    process.kill()
+                    await asyncio.wait_for(process.wait(), timeout=5)
         finally:
             self._process = None
             self._stderr_task = None
-        if reader is not None:
-            reader.cancel()
+        for task in (reader, stderr_task):
+            if task is not None:
+                task.cancel()
+        pending = [task for task in (reader, stderr_task) if task is not None]
+        if pending:
             try:
-                await asyncio.gather(reader, return_exceptions=True)
+                await asyncio.gather(*pending, return_exceptions=True)
             except Exception:
                 pass
+        # Close the child's pipes: an asyncio subprocess transport that is only garbage collected
+        # reports "unclosed transport" once the loop is gone.
+        _close_pipes(process)
+
+
+def _close_pipes(process: Any) -> None:
+    """Best-effort close of a child's stdin/stdout/stderr transports (never raises)."""
+    if process is None:
+        return
+    for stream in (process.stdin, process.stdout, process.stderr):
+        if stream is None:
+            continue
+        try:
+            stream.close()
+        except Exception:
+            continue
 
 
 class StreamableHTTPTransport(MCPTransport):

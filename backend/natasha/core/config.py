@@ -365,6 +365,14 @@ def load_settings(
     settings.paths = paths
     if not settings.data_dir:
         settings.data_dir = str(paths.home)
+    if str(settings.memory.db_backend or "sqlite").lower() not in {"sqlite", ""}:
+        # Refuse loudly instead of running SQLite while the configuration says otherwise: a silent
+        # mismatch between the declared and the real database is how a deployment loses data.
+        raise ConfigurationError(
+            f"memory.db_backend = {settings.memory.db_backend!r} is not supported by the runtime "
+            "stores yet (they are SQLite-only; the PostgreSQL schema exists but only the migration "
+            "runner can use it). Set memory.db_backend = \"sqlite\" or see docs/deployment.md."
+        )
     return settings
 
 

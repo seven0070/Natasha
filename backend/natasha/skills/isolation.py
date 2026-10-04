@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..core.process import terminate
 from ..core import SandboxError, SkillError
 
 
@@ -75,8 +76,10 @@ async def run_isolated(sandbox: SkillSandbox, payload: dict[str, Any]) -> dict[s
             process.communicate(input=stdin_payload), timeout=sandbox.timeout_seconds
         )
     except asyncio.TimeoutError:
-        process.kill()
-        raise SkillError(f"skill exceeded its {sandbox.timeout_seconds}s budget")
+        # Reap before reporting: an abandoned child would keep executing the skill's code after the
+        # runtime declared the skill over budget.
+        await terminate(process)
+        raise SkillError(f"skill exceeded its {sandbox.timeout_seconds}s budget (process stopped)")
 
     if len(stdout) > sandbox.max_output_bytes:
         raise SkillError(f"skill output exceeded {sandbox.max_output_bytes} bytes")

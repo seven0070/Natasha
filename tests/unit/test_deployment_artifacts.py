@@ -136,6 +136,22 @@ def test_the_repository_configuration_parses_and_loads():
     assert settings.auth_required is True
 
 
+def test_a_database_backend_the_stores_cannot_use_is_refused_loudly():
+    """`memory.db_backend = "postgres"` must fail at load, not silently run SQLite.
+
+    The runtime stores are SQLite-only; the PostgreSQL schema exists for the migration runner. A
+    setting that says otherwise and is ignored is worse than a setting that does not exist.
+    """
+    from natasha.core import ConfigurationError
+    from natasha.core.config import load_settings
+
+    with pytest.raises(ConfigurationError) as excinfo:
+        load_settings(overrides={"memory": {"db_backend": "postgres"}})
+    message = str(excinfo.value)
+    assert "postgres" in message and "SQLite" in message
+    assert "docs/deployment.md" in message, "the error must say where the full story is"
+
+
 # ------------------------------------------------------------------ documentation
 
 
