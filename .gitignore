@@ -8,6 +8,7 @@ venv/
 # Environment and secrets
 .env
 .env.*
+!.env.example
 
 # Node / frontend tooling
 node_modules/
