@@ -23,6 +23,22 @@
     </div>
   </div>
 
+  <!-- Application Startup Screen (Tauri & Web initialization) -->
+  <div id="startup" class="gate">
+    <div class="gate__card tactile-card" data-3d-tilt="true" style="text-align:center;">
+      <div class="gate__brand" style="justify-content:center;margin-bottom:1rem;">
+        <img src="/assets/logo.svg" alt="Natasha" width="56" height="56" />
+      </div>
+      <h2>Natasha</h2>
+      <p id="startup-status" class="muted small" style="margin-top:0.35rem;margin-bottom:1.25rem;">
+        Initializing desktop services...
+      </p>
+      <div id="startup-spinner" class="pulse-dot" style="display:inline-block;width:12px;height:12px;"></div>
+      <p id="startup-error" class="error small" role="alert" style="margin-top:1rem;" hidden></p>
+      <button id="startup-retry" class="btn btn--outline small" type="button" style="margin-top:0.75rem;" hidden>Retry Connection</button>
+    </div>
+  </div>
+
   <!-- Owner setup / unlock -->
   <div id="gate" class="gate" hidden>
     <div class="gate__card tactile-card" data-3d-tilt="true">

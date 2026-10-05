@@ -127,7 +127,7 @@ class DesktopBridge {
     return this.invoke("get_system_info");
   }
 
-  // --- Restricted Filesystem Operations ---
+  // --- Restricted Filesystem Operations & Native Dialogs ---
   async readFile(path) {
     return this.invoke("safe_read_file", { path });
   }
@@ -138,6 +138,68 @@ class DesktopBridge {
 
   async listDir(path) {
     return this.invoke("safe_list_dir", { path });
+  }
+
+  async getDesktopPaths() {
+    return this.invoke("get_desktop_paths");
+  }
+
+  async openFileDialog(options = {}) {
+    if (!this.isTauri) {
+      return new Promise((resolve) => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.onchange = () => resolve(input.files && input.files[0] ? input.files[0].name : null);
+        input.click();
+      });
+    }
+    return this.invoke("open_file_dialog", {
+      title: options.title || "Open File",
+    });
+  }
+
+  async saveFileDialog(options = {}) {
+    if (!this.isTauri) {
+      return null;
+    }
+    return this.invoke("save_file_dialog", {
+      title: options.title || "Save File",
+      defaultName: options.defaultName || null,
+    });
+  }
+
+  // --- Clipboard Operations ---
+  async copyToClipboard(text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {
+      // Fallback
+    }
+    return false;
+  }
+
+  async readFromClipboard() {
+    try {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        return await navigator.clipboard.readText();
+      }
+    } catch {
+      // Fallback
+    }
+    return "";
+  }
+
+  // --- External URL Opening ---
+  async openExternal(url) {
+    if (!url) return;
+    try {
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      console.warn("[DesktopBridge] Open external URL failed:", err);
+    }
   }
 
   // --- Desktop Notifications ---

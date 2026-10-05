@@ -64,6 +64,9 @@ pub fn run() {
             safe_read_file,
             safe_write_file,
             safe_list_dir,
+            get_desktop_paths,
+            open_file_dialog,
+            save_file_dialog,
         ])
         .setup(move |app| {
             info!("Initializing Natasha Desktop Application...");

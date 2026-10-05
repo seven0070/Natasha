@@ -135,6 +135,11 @@ def test_native_rust_source_structure():
     assert "Settings" in tray_code
     assert "Quit" in tray_code
 
+    # Verify native file dialogs and desktop paths in fs.rs
+    assert "get_desktop_paths" in fs_code
+    assert "open_file_dialog" in fs_code
+    assert "save_file_dialog" in fs_code
+
 
 def test_icons_present():
     """Verify application icons exist for multi-platform distribution."""
@@ -160,6 +165,12 @@ def test_frontend_desktop_bridge_exists_and_exports_api():
     assert "safe_read_file" in content
     assert "safe_write_file" in content
     assert "safe_list_dir" in content
+    assert "getDesktopPaths" in content
+    assert "openFileDialog" in content
+    assert "saveFileDialog" in content
+    assert "copyToClipboard" in content
+    assert "readFromClipboard" in content
+    assert "openExternal" in content
     assert "getBackendStatus" in content
     assert "restartBackend" in content
     assert "handleDeepLink" in content
@@ -189,3 +200,20 @@ def test_frontend_app_integrates_desktop_module():
     content = app_js.read_text(encoding="utf-8")
     assert "desktop.js" in content
     assert "desktop" in content
+
+
+def test_application_startup_sequence_and_screen():
+    """Verify startup screen exists and app.js executes controlled startup sequence."""
+    index_html = FRONTEND_DIR / "index.html"
+    assert index_html.is_file()
+    html_content = index_html.read_text(encoding="utf-8")
+    assert 'id="startup"' in html_content
+    assert 'id="startup-status"' in html_content
+    assert 'id="startup-error"' in html_content
+    assert 'id="startup-retry"' in html_content
+
+    app_js = JS_DIR / "app.js"
+    js_content = app_js.read_text(encoding="utf-8")
+    assert "startupStatus" in js_content
+    assert "checkBackendHealth" in js_content
+    assert "Starting or connecting to backend..." in js_content

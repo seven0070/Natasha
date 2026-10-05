@@ -163,9 +163,43 @@ All incoming deep link URIs are validated against allowlisted routes before trig
 - Memory and CPU usage telemetry via the native Rust `sysinfo` subsystem (`get_system_info`).
 - Native notifications for long-running task completions, approval requests, and mission milestones.
 
+### Native File Dialogs & Desktop Paths
+- `desktop.openFileDialog({ title })`: Opens the OS-native file chooser without exposing raw shell or broad filesystem handles.
+- `desktop.saveFileDialog({ title, defaultName })`: Opens the OS-native save dialog for exporting artifacts, chat logs, or configurations.
+- `desktop.getDesktopPaths()`: Safely returns standard user paths (`home`, `documents`, `desktop`, `downloads`, `app_data`) via Tauri's path resolver.
+
+### Clipboard & External URLs
+- `desktop.copyToClipboard(text)` / `desktop.readFromClipboard()`: Seamless system clipboard access with fallback to Web API.
+- `desktop.openExternal(url)`: Opens external web links safely in the default system browser (`noopener,noreferrer`).
+
 ---
 
-## 7. Backend Process Lifecycle Management
+## 7. Application Startup Sequence & State Machine
+
+Natasha implements a controlled startup sequence to ensure the backend authority is fully healthy before the user interface is exposed:
+
+```text
+Launch Natasha
+      ↓
+Initialize Tauri Shell & Native Plugins
+      ↓
+Probe & Start Backend (apps/server.py on 127.0.0.1:8000)
+      ↓
+Health Polling (/api/system/health, up to 20 attempts)
+      ↓
+Authenticate Session (store.bootstrap())
+      ↓
+Hide Startup Gate & Mount Natasha Interface
+      ↓
+Ready
+```
+
+- **Startup Gate UI (`#startup`)**: Displays branding, live initialization status messages, and animated indicator while services initialize.
+- **Graceful Error Recovery**: If the backend fails to respond within 20 seconds, the startup screen halts, displays the exact failure reason, and provides an interactive "Retry Connection" button without crashing the app.
+
+---
+
+## 8. Backend Process Lifecycle Management
 
 Natasha features a self-healing process manager in Rust (`src-tauri/src/backend.rs`):
 
@@ -195,7 +229,7 @@ Terminate managed child process cleanly (no zombie processes)
 
 ---
 
-## 8. Code Signing & Release Pipeline
+## 9. Code Signing & Release Pipeline
 
 ### GitHub Actions CI/CD (`.github/workflows/desktop-release.yml`)
 The multi-platform release pipeline triggers on Git release tags (`v*`):
@@ -208,7 +242,7 @@ The multi-platform release pipeline triggers on Git release tags (`v*`):
 
 ---
 
-## 9. Data Storage & Uninstallation
+## 10. Data Storage & Uninstallation
 
 ### Application Data Locations
 Natasha stores local configuration, databases, and persistent logs in standard OS locations:
@@ -223,7 +257,7 @@ Natasha stores local configuration, databases, and persistent logs in standard O
 
 ---
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 | Issue | Cause | Resolution |
 | :--- | :--- | :--- |

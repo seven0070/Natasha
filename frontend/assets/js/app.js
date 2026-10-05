@@ -284,7 +284,70 @@ async function enterApp() {
 
 async function boot() {
   bubbleCursor.init();
-  const authenticated = await store.bootstrap();
+
+  const startupEl = document.getElementById("startup");
+  const startupStatus = document.getElementById("startup-status");
+  const startupError = document.getElementById("startup-error");
+  const startupRetry = document.getElementById("startup-retry");
+  const startupSpinner = document.getElementById("startup-spinner");
+
+  const setStartupStatus = (msg) => {
+    if (startupStatus) startupStatus.textContent = msg;
+  };
+
+  const showStartupFailure = (err) => {
+    if (startupSpinner) startupSpinner.hidden = true;
+    if (startupError) {
+      startupError.hidden = false;
+      startupError.textContent = `Backend connection failed: ${err.message || err}`;
+    }
+    if (startupRetry) {
+      startupRetry.hidden = false;
+      startupRetry.onclick = () => {
+        startupError.hidden = true;
+        startupRetry.hidden = true;
+        if (startupSpinner) startupSpinner.hidden = false;
+        boot();
+      };
+    }
+  };
+
+  // If running in Tauri desktop, wait for backend health check
+  if (desktop.isTauri) {
+    setStartupStatus("Starting or connecting to backend...");
+    let retries = 0;
+    const maxRetries = 20;
+    let healthy = false;
+
+    while (retries < maxRetries && !healthy) {
+      try {
+        healthy = await desktop.checkBackendHealth();
+        if (healthy) break;
+      } catch {
+        // continue polling
+      }
+      retries++;
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+
+    if (!healthy) {
+      showStartupFailure(new Error("Natasha backend could not be reached on http://127.0.0.1:8000."));
+      return;
+    }
+  }
+
+  setStartupStatus("Checking authentication...");
+  let authenticated = false;
+  try {
+    authenticated = await store.bootstrap();
+  } catch (err) {
+    showStartupFailure(err);
+    return;
+  }
+
+  // Hide startup screen
+  if (startupEl) startupEl.hidden = true;
+
   if (authenticated) {
     await enterApp();
   } else {

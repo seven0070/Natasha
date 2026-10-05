@@ -114,6 +114,60 @@ pub async fn safe_list_dir(path: String) -> Result<Vec<FileEntry>, String> {
     Ok(results)
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DesktopPaths {
+    pub home_dir: Option<String>,
+    pub document_dir: Option<String>,
+    pub desktop_dir: Option<String>,
+    pub download_dir: Option<String>,
+    pub app_data_dir: Option<String>,
+}
+
+#[tauri::command]
+pub async fn get_desktop_paths<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<DesktopPaths, String> {
+    use tauri::Manager;
+    let path_resolver = app.path();
+    Ok(DesktopPaths {
+        home_dir: path_resolver.home_dir().ok().map(|p| p.to_string_lossy().to_string()),
+        document_dir: path_resolver.document_dir().ok().map(|p| p.to_string_lossy().to_string()),
+        desktop_dir: path_resolver.desktop_dir().ok().map(|p| p.to_string_lossy().to_string()),
+        download_dir: path_resolver.download_dir().ok().map(|p| p.to_string_lossy().to_string()),
+        app_data_dir: path_resolver.app_data_dir().ok().map(|p| p.to_string_lossy().to_string()),
+    })
+}
+
+#[tauri::command]
+pub async fn open_file_dialog<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    title: Option<String>,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let mut builder = app.dialog().file();
+    if let Some(t) = title {
+        builder = builder.set_title(t);
+    }
+    let path = builder.blocking_pick_file();
+    Ok(path.map(|p| p.to_string()))
+}
+
+#[tauri::command]
+pub async fn save_file_dialog<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    title: Option<String>,
+    default_name: Option<String>,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let mut builder = app.dialog().file();
+    if let Some(t) = title {
+        builder = builder.set_title(t);
+    }
+    if let Some(name) = default_name {
+        builder = builder.set_file_name(name);
+    }
+    let path = builder.blocking_save_file();
+    Ok(path.map(|p| p.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
