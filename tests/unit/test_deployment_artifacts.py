@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import shlex
+import sys
 import tomllib
 from pathlib import Path
 
@@ -63,7 +64,8 @@ def test_the_dockerfile_healthcheck_targets_a_real_endpoint_shape():
 def test_the_container_entrypoint_runs_migrations_before_serving():
     entrypoint = REPO_ROOT / "infra" / "docker" / "entrypoint.sh"
     assert entrypoint.is_file()
-    assert entrypoint.stat().st_mode & 0o111, "the entrypoint must be executable"
+    if sys.platform != "win32":
+        assert entrypoint.stat().st_mode & 0o111, "the entrypoint must be executable"
     text = entrypoint.read_text(encoding="utf-8")
     assert "migrate up" in text, "the container must migrate the volume it is starting against"
     assert "apps.server" in text, "the entrypoint must start the documented entry point"

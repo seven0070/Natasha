@@ -122,7 +122,7 @@ def test_native_rust_source_structure():
     assert "BackendManager" in backend_code
     assert "MAX_RESTART_ATTEMPTS" in backend_code
     assert "check_health" in backend_code
-    assert "api/system/health" in backend_code
+    assert "api/health" in backend_code
     assert "find_python" in backend_code
     assert "stop" in backend_code
 

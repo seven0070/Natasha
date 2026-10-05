@@ -416,7 +416,7 @@ class PolicyEngine:
                 )
 
         roots = self._write_roots if (writing or deleting) else self._read_roots
-        inside = any(text == root or text.startswith(root.rstrip("/") + "/") for root in roots)
+        inside = any(text == root or text.startswith(root.rstrip("/\\") + os.sep) or text.startswith(root.rstrip("/\\") + "/") for root in roots)
         if not inside:
             # Confinement is a *root* rule, not a risk rule: an approval must never be able to
             # widen it, or "the model may only write inside these roots" would be a lie. Widening

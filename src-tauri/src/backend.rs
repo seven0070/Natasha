@@ -56,7 +56,7 @@ impl BackendManager {
             .build();
 
         if let Ok(client) = client {
-            let url = format!("http://127.0.0.1:{}/api/system/health", self.port);
+            let url = format!("http://127.0.0.1:{}/api/health", self.port);
             if let Ok(resp) = client.get(&url).send() {
                 return resp.status().is_success();
             }

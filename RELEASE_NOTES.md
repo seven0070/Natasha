@@ -58,22 +58,20 @@ The desktop shell acts strictly as a native capability layer and process supervi
 | **Desktop** | Windows 10/11 Desktop Shell | **VERIFIED** | Rust toolchain, Cargo compilation, IPC bridge, integration tests passing. Binary built at `src-tauri/target/release/natasha.exe` (35.06 MiB). |
 | **Desktop** | Windows NSIS Installer | **VERIFIED** | Built at `src-tauri/target/release/bundle/nsis/Natasha_0.9.0_x64-setup.exe` (7.00 MiB). |
 | **Desktop** | Windows MSI Package | **VERIFIED** | Built at `src-tauri/target/release/bundle/msi/Natasha_0.9.0_x64_en-US.msi` (10.50 MiB). |
-| **Desktop** | macOS Universal (.app / .dmg) | **CONFIGURED** | Universal Darwin target in `.github/workflows/desktop-release.yml`. |
-| **Desktop** | Linux (.AppImage / .deb) | **CONFIGURED** | WebKit2GTK and AppImage packaging in `.github/workflows/desktop-release.yml`. |
 | **Security** | Least-privilege Permissions | **VERIFIED** | `tests/unit/test_desktop_integration.py` verifies shell execution blocked and paths restricted. |
 | **Security** | Path Traversal Prevention | **VERIFIED** | Built-in Rust unit tests and Python integration tests verify traversal rejection. |
 | **Backend** | REST & WebSocket Integration | **VERIFIED** | `api.js` dynamic loopback resolution verified against FastAPI endpoints. |
 | **Hardware** | Voice Arena Microphone/STT | **UNVERIFIED — HARDWARE NOT AVAILABLE** | SAPI TTS backend detected; local STT model / mic unverified in headless environment. |
-| **Signing** | Production Code Signing | **CONFIGURED** | GitHub Secrets workflow configured for Authenticode and Apple Notarization. |
+| **Signing** | Windows Code Signing | **UNVERIFIED — PRODUCTION SIGNING CREDENTIALS NOT CONFIGURED** | Authenticode signing ready in CI when `TAURI_SIGNING_PRIVATE_KEY` is added to GitHub Secrets. |
 
 ---
 
 ## 5. Installation & Upgrades
 
 ### System Requirements
-- **Windows**: Windows 10 (Version 2004+ / Build 19041+) or Windows 11 (64-bit). Microsoft Edge WebView2 runtime (preinstalled on modern Windows).
-- **macOS**: macOS 10.15 Catalina or newer (Intel & Apple Silicon).
-- **Linux**: Ubuntu 20.04+, Fedora 34+, or modern system with WebKit2GTK (4.1).
+- **Operating System**: Windows 10 (Version 2004+ / Build 19041+) or Windows 11 (64-bit x86_64).
+- **Runtime**: Microsoft Edge WebView2 runtime (preinstalled on modern Windows 10/11).
+- **Hardware**: Minimum 4 GB RAM, 500 MB disk space.
 
 ### Clean Installation
 1. Download `Natasha_0.9.0_x64-setup.exe` (Windows NSIS) or `Natasha_0.9.0_x64.msi`.
