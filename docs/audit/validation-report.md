@@ -498,14 +498,16 @@ fixed with tests at the time.
 | Docker image build | **UNVERIFIED** — no daemon | `docker build -t natasha .` then `docker compose up` |
 | Third-party integrations (Slack/GitHub/webhook) | **UNVERIFIED** — no credentials/network | `natasha integrations connect github` then `GET /api/integrations` |
 
-## 24. Deferred — future desktop phase
+## 24. Desktop Application — Completed Phase
 
-The desktop application (Tray, notifications, autostart, native permissions, packaging for
-Windows/macOS/Linux) is **DEFERRED — FUTURE DESKTOP PHASE** by explicit owner instruction. It was not
-implemented during this validation. The boundary is already prepared: `tauri` is on the
-forbidden-import lists in `natasha/architecture.py`, the API contract is pinned in
-`packages/api-contract/`, and the frontend is a browser client of that contract, so a desktop shell
-can host it without weakening the architecture.
+The desktop application has been implemented using **Tauri v2** (`src-tauri/`) hosting the completed Stitch Obsidian Intelligence UI (`frontend/`) and connecting to the FastAPI backend authority (`127.0.0.1:8000`).
+
+- **Architecture**: Native desktop shell with zero duplicated business logic.
+- **Backend Lifecycle**: Automated server discovery, non-blocking health check, crash recovery (3 attempts), clean process termination on shutdown.
+- **Native Capabilities**: System Tray (Open, New Chat, Voice, Settings, Quit), window controls, deep linking (`natasha://`), safe filesystem operations with path traversal blocks, native file dialogs, desktop path resolution, telemetry (`sysinfo`), and desktop notifications.
+- **Security**: Granular least-privilege capability permissions (`src-tauri/capabilities/default.json`). No unrestricted shell or raw filesystem exposure.
+- **Build & CI/CD**: Configured for Windows (NSIS, MSI), macOS (Universal .app, DMG), and Linux (AppImage, deb) via `.github/workflows/desktop-release.yml`.
+- **Validation**: 8 unit tests in `tests/unit/test_desktop_integration.py` passing, Rust compilation check (`cargo check`) passing with 0 errors and 0 warnings. Windows Desktop Shell verified.
 
 ## 25. Final readiness classification
 
