@@ -86,8 +86,17 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
         run: |
-          npx --yes @tauri-apps/cli build -b nsis -b msi --no-sign
+          $buildArgs = @("build", "-b", "nsis", "-b", "msi")
+          if ("${{ secrets.WINDOWS_SIGNING_CERTIFICATE }}" -ne "") {
+            $pfxBytes = [System.Convert]::FromBase64String("${{ secrets.WINDOWS_SIGNING_CERTIFICATE }}")
+            [IO.File]::WriteAllBytes("cert.pfx", $pfxBytes)
+            $env:SIGNING_CERT_PATH = (Resolve-Path "cert.pfx").Path
+          } else {
+            $buildArgs += "--no-sign"
+          }
+          npx --yes @tauri-apps/cli $buildArgs
 
       - name: Upload Windows Build Artifacts
         uses: actions/upload-artifact@v4

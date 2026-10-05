@@ -39,7 +39,8 @@
       "nsis": {
         "displayLanguageSelector": false,
         "installerIcon": "icons/icon.ico"
-      }
+      },
+      "signCommand": "signtool.exe sign /f \"%SIGNING_CERT_PATH%\" /p \"%SIGNING_CERT_PASSWORD%\" /tr http://timestamp.digicert.com /td sha256 /fd sha256 \"%1\""
     },
     "macOS": {
       "minimumSystemVersion": "10.15"

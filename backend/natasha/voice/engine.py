@@ -267,10 +267,30 @@ class VoiceEngine:
 
     def record(self, seconds: float = 5.0) -> tuple[bytes, str]:
         """Capture raw audio from the default input device. Returns ``(bytes, error)``."""
+        target = Path(tempfile.gettempdir()) / f"natasha-listen-{new_id('rec')}.wav"
+        try:
+            import sounddevice as sd
+            import soundfile as sf
+            import numpy as np
+            
+            samplerate = 16000
+            recording = sd.rec(int(seconds * samplerate), samplerate=samplerate, channels=1, dtype='int16')
+            sd.wait()
+            sf.write(str(target), recording, samplerate)
+            data = target.read_bytes()
+            try:
+                target.unlink()
+            except OSError:
+                pass
+            return data, ""
+        except ImportError:
+            pass
+        except Exception as exc:
+            return b"", f"sounddevice failed: {type(exc).__name__}: {exc}"
+
         recorder = self._recorder()
         if not recorder:
-            return b"", "no audio recorder found (install alsa-utils for arecord)"
-        target = Path(tempfile.gettempdir()) / f"natasha-listen-{new_id('rec')}.wav"
+            return b"", "no audio recorder found"
         if recorder == "arecord":
             command = ["arecord", "-q", "-d", str(int(seconds)), "-f", "S16_LE", "-r", "16000", str(target)]
         elif recorder == "sox":
