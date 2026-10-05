@@ -96,12 +96,20 @@ jobs:
             [IO.File]::WriteAllBytes("cert.pfx", $pfxBytes)
             $certPath = (Resolve-Path "cert.pfx").Path
             
-            # Test signtool execution directly on notepad to avoid format error
-            Copy-Item C:\Windows\System32\notepad.exe .\notepad.exe
-            & $signtoolPath sign /f "$certPath" /p "${{ secrets.WINDOWS_SIGNING_PASSWORD }}" /tr http://timestamp.digicert.com /td sha256 /fd sha256 /v ".\notepad.exe" 2>&1 | Out-String | Write-Host
+            # Create signing wrapper script
+            $signScript = @"
+param([string]`$FileToSign)
+Write-Host "Signing file: `$FileToSign"
+& '$signtoolPath' sign /f '$certPath' /p '${{ secrets.WINDOWS_SIGNING_PASSWORD }}' /tr http://timestamp.digicert.com /td sha256 /fd sha256 /v "`$FileToSign"
+if (`$LASTEXITCODE -ne 0) {
+    Write-Host "SignTool failed with exit code `$LASTEXITCODE"
+    exit `$LASTEXITCODE
+}
+"@
+            Out-File -FilePath sign.ps1 -InputObject $signScript -Encoding utf8
             
             $conf = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
-            $conf.bundle.windows.signCommand = "'$signtoolPath' sign /f `"$certPath`" /p `"${{ secrets.WINDOWS_SIGNING_PASSWORD }}`" /tr http://timestamp.digicert.com /td sha256 /fd sha256 /v `"%1`""
+            $conf.bundle.windows.signCommand = "powershell.exe -ExecutionPolicy Bypass -File sign.ps1 `"%1`""
             $conf | ConvertTo-Json -Depth 10 | Set-Content src-tauri/tauri.conf.json
           } else {
             $buildArgs += "--no-sign"
