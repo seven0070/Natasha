@@ -33,7 +33,7 @@ def test_tauri_configuration_file():
 
     # Core identity
     assert conf.get("productName") == "Natasha"
-    assert conf.get("version") == "0.9.0"
+    assert conf.get("version") == "0.9.1"
     assert conf.get("identifier") == "ai.natasha.desktop"
 
     # Frontend dev & build distribution path
