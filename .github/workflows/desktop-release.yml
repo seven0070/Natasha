@@ -90,16 +90,18 @@ jobs:
         run: |
           $buildArgs = @("build", "-b", "nsis", "-b", "msi")
           if ("${{ secrets.WINDOWS_SIGNING_CERTIFICATE }}" -ne "") {
-            $signtoolDir = (Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).DirectoryName
-            if ($signtoolDir) {
-              $env:PATH = "$signtoolDir;$env:PATH"
-            }
+            $signtoolPath = (Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1).FullName
+            echo "Found signtool at: $signtoolPath"
             $pfxBytes = [System.Convert]::FromBase64String("${{ secrets.WINDOWS_SIGNING_CERTIFICATE }}")
             [IO.File]::WriteAllBytes("cert.pfx", $pfxBytes)
             $certPath = (Resolve-Path "cert.pfx").Path
             
+            # Test signtool execution directly on notepad to avoid format error
+            Copy-Item C:\Windows\System32\notepad.exe .\notepad.exe
+            & $signtoolPath sign /f "$certPath" /p "${{ secrets.WINDOWS_SIGNING_PASSWORD }}" /tr http://timestamp.digicert.com /td sha256 /fd sha256 /v ".\notepad.exe" 2>&1 | Out-String | Write-Host
+            
             $conf = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
-            $conf.bundle.windows.signCommand = "signtool.exe sign /f `"$certPath`" /p `"${{ secrets.WINDOWS_SIGNING_PASSWORD }}`" /tr http://timestamp.digicert.com /td sha256 /fd sha256 /v `"%1`""
+            $conf.bundle.windows.signCommand = "'$signtoolPath' sign /f `"$certPath`" /p `"${{ secrets.WINDOWS_SIGNING_PASSWORD }}`" /tr http://timestamp.digicert.com /td sha256 /fd sha256 /v `"%1`""
             $conf | ConvertTo-Json -Depth 10 | Set-Content src-tauri/tauri.conf.json
           } else {
             $buildArgs += "--no-sign"
