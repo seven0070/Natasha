@@ -236,7 +236,7 @@ The multi-platform release pipeline triggers on Git release tags (`v*`):
 1. **Pre-flight verification**: Runs Python backend tests, frontend syntax tests, and desktop integration tests.
 2. **Multi-platform build matrix**: Builds native installers on Windows, macOS, and Ubuntu runners.
 3. **Signing & Notarization**:
-   - **Windows**: Authenticode code signing using `TAURI_SIGNING_PRIVATE_KEY` and certificate secrets.
+      - **Windows**: Tagged releases require `WINDOWS_SIGNING_CERTIFICATE` (base64-encoded production PFX) and `WINDOWS_SIGNING_PASSWORD` as protected GitHub Actions secrets, plus the `WINDOWS_SIGNING_PUBLISHER` repository variable containing the exact certificate subject. CI validates the Code Signing EKU and trusted certificate chain, signs with SHA-256 and a trusted timestamp, then verifies the executable, NSIS/MSI installers, the downloaded GitHub Release assets, and the NSIS-installed executable. Non-release CI builds are unsigned; a missing or untrusted production certificate blocks tagged releases.
    - **macOS**: Apple Developer ID signing and Apple Notary API verification (`APPLE_CERTIFICATE`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`).
    - **Linux**: Package validation and SHA-256 checksum generation.
 

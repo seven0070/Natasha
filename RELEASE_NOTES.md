@@ -62,7 +62,7 @@ The desktop shell acts strictly as a native capability layer and process supervi
 | **Security** | Path Traversal Prevention | **VERIFIED** | Built-in Rust unit tests and Python integration tests verify traversal rejection. |
 | **Backend** | REST & WebSocket Integration | **VERIFIED** | `api.js` dynamic loopback resolution verified against FastAPI endpoints. |
 | **Hardware** | Voice Arena Microphone/STT | **UNVERIFIED — HARDWARE NOT AVAILABLE** | SAPI TTS backend detected; local STT model / mic unverified in headless environment. |
-| **Signing** | Windows Code Signing | **UNVERIFIED — PRODUCTION SIGNING CREDENTIALS NOT CONFIGURED** | Authenticode signing ready in CI when `TAURI_SIGNING_PRIVATE_KEY` is added to GitHub Secrets. |
+| **Signing** | Windows Code Signing | **BLOCKED — TRUSTED PRODUCTION CERTIFICATE REQUIRED** | The existing v0.9.1 draft artifacts are unsigned. A trusted production Code Signing certificate, its protected GitHub Actions secrets, and a passing artifact/chain/timestamp verification are required before publication. |
 
 ---
 
@@ -86,4 +86,4 @@ The desktop shell acts strictly as a native capability layer and process supervi
 
 ## 6. Known Limitations
 1. **Cloud API Credentials**: When running fully offline without cloud API keys, external model providers will honestly report as unavailable. Local models (Ollama/llama.cpp) can be toggled via Settings.
-2. **Code Signing Secrets**: Official signed production releases require adding `TAURI_SIGNING_PRIVATE_KEY` and Apple Developer certificates to GitHub Actions Secrets.
+2. **Code Signing Secrets**: Official Windows releases require a trusted production Authenticode certificate in `WINDOWS_SIGNING_CERTIFICATE` and `WINDOWS_SIGNING_PASSWORD` GitHub Actions secrets, with the expected subject in the `WINDOWS_SIGNING_PUBLISHER` repository variable. `TAURI_SIGNING_PRIVATE_KEY` is for Tauri updater signatures and is not an Authenticode certificate. Apple Developer signing credentials are separate.

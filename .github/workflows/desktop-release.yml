@@ -86,44 +86,27 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
+           WINDOWS_SIGNING_CERTIFICATE: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.WINDOWS_SIGNING_CERTIFICATE || '' }}
+           WINDOWS_SIGNING_PASSWORD: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.WINDOWS_SIGNING_PASSWORD || '' }}
+           WINDOWS_SIGNING_PUBLISHER: ${{ vars.WINDOWS_SIGNING_PUBLISHER }}
         run: |
-          $buildArgs = @("build", "-b", "nsis", "-b", "msi")
-          if ("${{ secrets.WINDOWS_SIGNING_CERTIFICATE }}" -ne "") {
-            $signtoolPath = (Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1).FullName
-            echo "Found signtool at: $signtoolPath"
-            $pfxBytes = [System.Convert]::FromBase64String("${{ secrets.WINDOWS_SIGNING_CERTIFICATE }}")
-            [IO.File]::WriteAllBytes("cert.pfx", $pfxBytes)
-            $certPath = (Resolve-Path "cert.pfx").Path
-            
-            # Create signing wrapper script
-            $signScript = @"
-param([string]`$FileToSign)
-Write-Host "Signing file: `$FileToSign"
-& '$signtoolPath' sign /f '$certPath' /p '${{ secrets.WINDOWS_SIGNING_PASSWORD }}' /tr http://timestamp.digicert.com /td sha256 /fd sha256 /v "`$FileToSign"
-if (`$LASTEXITCODE -ne 0) {
-    Write-Host "SignTool failed with exit code `$LASTEXITCODE"
-    exit `$LASTEXITCODE
-}
-"@
-            Out-File -FilePath sign.ps1 -InputObject $signScript -Encoding utf8
-            
-            $conf = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
-            $conf.bundle.windows.signCommand = "powershell.exe -ExecutionPolicy Bypass -File sign.ps1 `"%1`""
-            $conf | ConvertTo-Json -Depth 10 | Set-Content src-tauri/tauri.conf.json
-          } else {
-            $buildArgs += "--no-sign"
-          }
-          npx --yes @tauri-apps/cli $buildArgs
+           ./scripts/windows/build-and-verify-release.ps1
+
+      - name: Stage Verified Windows Release Artifacts
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $stage = Join-Path $env:GITHUB_WORKSPACE 'release-artifacts'
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          Copy-Item 'src-tauri/target/release/natasha.exe' $stage
+          Copy-Item 'src-tauri/target/release/bundle/nsis/Natasha_0.9.1_x64-setup.exe' $stage
+          Copy-Item 'src-tauri/target/release/bundle/msi/Natasha_0.9.1_x64_en-US.msi' $stage
 
       - name: Upload Windows Build Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: natasha-windows-${{ github.ref_name }}
-          path: |
-            src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/natasha.exe
+          path: release-artifacts/*
           if-no-files-found: error
 
   release:
@@ -146,5 +129,25 @@ if (`$LASTEXITCODE -ne 0) {
         with:
           files: release-bundles/**/*
           generate_release_notes: true
-          draft: false
+          draft: true
           prerelease: false
+
+      - name: Download Actual GitHub Release Assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --dir release-downloads
+
+      - name: Verify Downloaded Release Signatures and Installed Executable
+        env:
+          WINDOWS_SIGNING_CERTIFICATE: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE }}
+          WINDOWS_SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
+          WINDOWS_SIGNING_PUBLISHER: ${{ vars.WINDOWS_SIGNING_PUBLISHER }}
+        run: |
+          ./scripts/windows/build-and-verify-release.ps1 -VerifyOnly -ArtifactsDirectory release-downloads
+
+      - name: Publish Verified GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --draft=false
