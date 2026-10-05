@@ -4,32 +4,43 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="dark light" />
-  <title>Natasha</title>
+  <title>Natasha AI</title>
   <link rel="icon" href="/assets/logo.svg" type="image/svg+xml" />
   <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/assets/app.css" />
 </head>
 <body>
   <a class="skip" href="#view">Skip to content</a>
 
+  <!-- 3D Bubble Cursor Container -->
+  <div id="bubble-container" aria-hidden="true">
+    <div id="bubble-cursor-wrapper">
+      <div id="bubble-cursor"></div>
+      <div id="bubble-shadow"></div>
+    </div>
+  </div>
+
   <!-- Owner setup / unlock -->
   <div id="gate" class="gate" hidden>
-    <div class="gate__card">
+    <div class="gate__card tactile-card" data-3d-tilt="true">
       <div class="gate__brand">
-        <img src="/assets/logo.svg" alt="" width="40" height="40" />
+        <img src="/assets/logo.svg" alt="Natasha AI" width="48" height="48" />
         <div>
           <h1>Natasha</h1>
-          <p id="gate-sub" class="muted">Local-first personal agent</p>
+          <p id="gate-sub" class="muted">Local-first autonomous intelligence</p>
         </div>
       </div>
       <form id="gate-form" autocomplete="off">
         <label for="gate-pass">Owner passphrase</label>
         <input id="gate-pass" type="password" name="passphrase" minlength="8"
-               autocomplete="current-password" required />
+               autocomplete="current-password" required placeholder="Enter passphrase to unlock..." />
         <p id="gate-hint" class="muted small">
           Your passphrase unlocks the local session. It never leaves this machine.
         </p>
-        <button id="gate-submit" class="btn btn--primary" type="submit">Unlock</button>
+        <button id="gate-submit" class="btn btn--primary" type="submit" style="width:100%;margin-top:0.5rem">Unlock</button>
       </form>
       <p id="gate-error" class="error" role="alert" hidden></p>
     </div>
@@ -38,14 +49,43 @@
   <div id="shell" class="shell" hidden>
     <aside class="sidebar" aria-label="Sections">
       <div class="sidebar__brand">
-        <img src="/assets/logo.svg" alt="" width="28" height="28" />
-        <span>Natasha</span>
-        <button id="collapse" class="icon-btn" title="Collapse sidebar" aria-label="Collapse sidebar">«</button>
+        <img src="/assets/logo.svg" alt="Natasha" width="30" height="30" />
+        <span class="sidebar__brand-text">Natasha</span>
+        <div class="brand-badge">
+          <span class="pulse-dot"></span>
+          <span>Online</span>
+        </div>
+        <button id="collapse" class="icon-btn small" title="Collapse sidebar" aria-label="Collapse sidebar" style="margin-left:0.35rem">«</button>
       </div>
+
+      <div class="sidebar__action">
+        <button id="btn-sidebar-new" class="btn-new-chat" type="button" title="Start new conversation (⌘N)">
+          <span class="row tight">
+            <span class="material-symbols-outlined text-[18px]">add</span>
+            <span>New Chat</span>
+          </span>
+          <kbd>⌘N</kbd>
+        </button>
+      </div>
+
+      <div class="sidebar__section-title">Workspace</div>
       <nav id="nav" class="nav"></nav>
+
       <div class="sidebar__foot">
-        <div id="health-chip" class="chip chip--muted" title="Runtime health">checking…</div>
-        <button id="logout" class="btn btn--ghost small">Lock</button>
+        <div id="profile-card" class="sidebar__profile" title="Owner session">
+          <div class="sidebar__avatar">
+            <span class="material-symbols-outlined text-[18px]">person</span>
+          </div>
+          <div class="sidebar__profile-text">
+            <div id="sidebar-owner-name" class="sidebar__profile-name">Owner</div>
+            <div id="sidebar-workspace-label" class="sidebar__profile-role">Local Workspace</div>
+          </div>
+          <span class="material-symbols-outlined text-[18px] muted">unfold_more</span>
+        </div>
+        <div class="row" style="justify-content:space-between;align-items:center;padding:0 0.25rem">
+          <div id="health-chip" class="chip chip--muted" title="Runtime health">checking…</div>
+          <button id="logout" class="btn btn--ghost small" title="Lock session">Lock</button>
+        </div>
       </div>
     </aside>
 
@@ -58,9 +98,12 @@
         </div>
         <div class="topbar__actions">
           <button id="palette-open" class="btn btn--ghost small" title="Command palette (Ctrl/Cmd + K)">
-            ⌘K
+            <span class="material-symbols-outlined text-[16px]">search</span>
+            <span>⌘K</span>
           </button>
-          <button id="theme" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">◐</button>
+          <button id="theme" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">
+            <span class="material-symbols-outlined text-[18px]">dark_mode</span>
+          </button>
         </div>
       </header>
       <section id="view" class="view" tabindex="-1"></section>
@@ -71,7 +114,7 @@
   <div id="modal-root"></div>
 
   <div id="palette" class="palette" hidden>
-    <input id="palette-input" type="text" placeholder="Jump to…  (sections, missions, memories, skills)" />
+    <input id="palette-input" type="text" placeholder="Jump to… (sections, missions, memories, skills)" />
     <ul id="palette-list" class="palette__list"></ul>
   </div>
 

@@ -5,13 +5,19 @@ import { store, startStatusPolling } from "./store.js";
 import { el, clear, toast, fmtTime, titleCase } from "./ui.js";
 import { start, routeList, go, currentRoute } from "./router.js";
 
+import { bubbleCursor } from "./cursor.js";
+import { desktop } from "./desktop.js";
+
 import "./views/chat.js";
+import "./views/projects.js";
 import "./views/missions.js";
+import "./views/agents.js";
+import "./views/voice.js";
+import "./views/settings.js";
 import "./views/memory.js";
 import "./views/approvals.js";
 import "./views/activity.js";
 import "./views/artifacts.js";
-import "./views/voice.js";
 import "./views/vision.js";
 import "./views/computer.js";
 import "./views/skills.js";
@@ -19,7 +25,6 @@ import "./views/integrations.js";
 import "./views/providers.js";
 import "./views/security.js";
 import "./views/evolution.js";
-import "./views/settings.js";
 import "./views/tools.js";
 
 const dom = {
@@ -45,13 +50,29 @@ const dom = {
   paletteList: document.getElementById("palette-list"),
 };
 
-/* ---------- navigation ---------- */
+const PRIMARY_ORDER = ["chat", "projects", "missions", "agents", "voice", "settings"];
+
 function buildNav() {
   clear(dom.nav);
-  routeList().forEach((route) => {
+  const allRoutes = routeList().filter((r) => r.id !== "tasks");
+  allRoutes.sort((a, b) => {
+    const ai = PRIMARY_ORDER.indexOf(a.id);
+    const bi = PRIMARY_ORDER.indexOf(b.id);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a.title.localeCompare(b.title);
+  });
+
+  allRoutes.forEach((route) => {
+    const isIconName = route.icon && route.icon.length > 2;
+    const iconEl = isIconName
+      ? el("span", { class: "nav__icon material-symbols-outlined" }, route.icon)
+      : el("span", { class: "nav__icon" }, route.icon || "•");
     const link = el("a", {
       class: "nav__item", href: `#/${route.id}`, dataset: { route: route.id },
-    }, el("span", { class: "nav__icon" }, route.icon || "•"),
+    },
+      iconEl,
       el("span", { class: "nav__label" }, route.title),
       route.id === "approvals" ? el("span", { class: "nav__badge", dataset: { badge: "approvals" }, hidden: true }, "") : null);
     dom.nav.append(link);
@@ -204,6 +225,30 @@ document.addEventListener("click", (event) => {
   }
 });
 
+function updateProfile() {
+  const ownerEl = document.getElementById("sidebar-owner-name");
+  if (ownerEl && store.ownerId) {
+    ownerEl.textContent = store.ownerId;
+  }
+}
+
+// Global ⌘N / New Chat trigger
+const btnNewChat = document.getElementById("btn-sidebar-new");
+if (btnNewChat) {
+  btnNewChat.addEventListener("click", () => {
+    go("chat");
+    window.dispatchEvent(new CustomEvent("natasha:new-chat"));
+  });
+}
+
+document.addEventListener("keydown", (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n") {
+    event.preventDefault();
+    go("chat");
+    window.dispatchEvent(new CustomEvent("natasha:new-chat"));
+  }
+});
+
 /* ---------- chrome ---------- */
 dom.theme.addEventListener("click", () => store.toggleTheme());
 dom.menu.addEventListener("click", () => {
@@ -219,6 +264,7 @@ document.querySelectorAll(".nav__item").forEach(() => {});
 store.subscribe(() => {
   updateBadges();
   updateHealth();
+  updateProfile();
 });
 setInterval(updateHealth, 20000);
 
@@ -228,6 +274,8 @@ async function enterApp() {
   buildNav();
   updateBadges();
   updateHealth();
+  updateProfile();
+  bubbleCursor.init();
   start((definition) => { dom.viewSub.textContent = definition.subtitle || ""; });
   startStatusPolling();
   const route = currentRoute();
@@ -235,6 +283,7 @@ async function enterApp() {
 }
 
 async function boot() {
+  bubbleCursor.init();
   const authenticated = await store.bootstrap();
   if (authenticated) {
     await enterApp();

@@ -28,3 +28,7 @@ build/
 data/
 artifacts/
 reports/
+
+# Rust / Tauri
+target/
+src-tauri/target/

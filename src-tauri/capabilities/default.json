@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default permissions for Natasha desktop application window",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "notification:default",
+    "clipboard-manager:default",
+    "autostart:default",
+    "deep-link:default"
+  ]
+}

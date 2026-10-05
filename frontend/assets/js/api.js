@@ -4,6 +4,21 @@
 
 const TOKEN_KEY = "natasha.token";
 
+export function resolveApiUrl(path) {
+  if (!path || path.startsWith("http://") || path.startsWith("https://") || path.startsWith("ws://") || path.startsWith("wss://")) {
+    return path;
+  }
+  const isTauri = Boolean(window.__TAURI_INTERNALS__ || window.__TAURI__);
+  const isLocalHost = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+  const defaultHost = window.__NATASHA_BACKEND_URL__ || "http://127.0.0.1:8000";
+
+  if (isTauri && !isLocalHost) {
+    const base = defaultHost.replace(/\/+$/, "");
+    return `${base}${path.startsWith("/") ? "" : "/"}${path}`;
+  }
+  return path;
+}
+
 export const api = {
   token: localStorage.getItem(TOKEN_KEY) || "",
 
@@ -20,7 +35,7 @@ export const api = {
   },
 
   async request(method, path, { body, query, raw = false } = {}) {
-    let url = path;
+    let url = resolveApiUrl(path);
     if (query) {
       const params = new URLSearchParams();
       for (const [key, value] of Object.entries(query)) {
@@ -62,7 +77,7 @@ export const api = {
 
   /** Server-sent events for a chat turn. Returns an async iterator of parsed events. */
   async *stream(path, body) {
-    const response = await fetch(path, { method: "POST", headers: this.headers(), body: JSON.stringify(body) });
+    const response = await fetch(resolveApiUrl(path), { method: "POST", headers: this.headers(), body: JSON.stringify(body) });
     if (!response.ok || !response.body) throw new Error(`stream failed (${response.status})`);
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -83,10 +98,24 @@ export const api = {
 
   /** Websocket chat with an automatic fallback to SSE when the socket cannot be opened. */
   chatStream({ message, conversationId = "", missionId = "", images = [], documents = [], onEvent }) {
-    const scheme = location.protocol === "https:" ? "wss" : "ws";
+    const isTauri = Boolean(window.__TAURI_INTERNALS__ || window.__TAURI__);
+    const isLocalHost = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+    const defaultHost = window.__NATASHA_BACKEND_URL__ || "http://127.0.0.1:8000";
+    let wsHost = location.host;
+    let scheme = location.protocol === "https:" ? "wss" : "ws";
+
+    if (isTauri && !isLocalHost) {
+      try {
+        const parsed = new URL(defaultHost);
+        wsHost = parsed.host;
+        scheme = parsed.protocol === "https:" ? "wss" : "ws";
+      } catch {
+        wsHost = "127.0.0.1:8000";
+      }
+    }
     let socket = null;
     let closed = false;
-    const url = `${scheme}://${location.host}/api/ws/chat`;
+    const url = `${scheme}://${wsHost}/api/ws/chat`;
 
     const fallback = async () => {
       try {
